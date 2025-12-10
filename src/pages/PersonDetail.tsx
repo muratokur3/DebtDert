@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useDebts } from '../hooks/useDebts';
-import { ArrowLeft, Plus, Phone, MessageCircle, Trash2, Edit2, Share2, X } from 'lucide-react';
+import { ArrowLeft, Plus, Phone, MessageCircle, Trash2, Edit2, Share2, X, MoreVertical } from 'lucide-react';
 import { searchUserByPhone, getContacts, updateContact } from '../services/db';
 import { Avatar } from '../components/Avatar';
 import { DebtCard } from '../components/DebtCard';
@@ -29,6 +29,17 @@ export const PersonDetail = () => {
     const [editName, setEditName] = useState('');
     const [editPhone, setEditPhone] = useState('');
     const [submittingEdit, setSubmittingEdit] = useState(false);
+    const [showMenu, setShowMenu] = useState(false);
+    const [isScrolled, setIsScrolled] = useState(false);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            const scrolled = window.scrollY > 20;
+            setIsScrolled(scrolled);
+        };
+        window.addEventListener('scroll', handleScroll);
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
 
     const handleDelete = async () => {
         if (!user || !id) return;
@@ -88,13 +99,7 @@ export const PersonDetail = () => {
                 phoneNumber: editPhone
             });
             setShowEditModal(false);
-            // Ideally reload or update local state, but page might rely on 'debts' or just navigation ID.
-            // Since ID is phone, if phone changes, we should navigate? 
-            // If only name changes, we want to see it. 
-            // However, personInfo is derived from debts or navigation ID.
-            // We might need to refresh debts or handle this better. 
-            // For now, let's just close and maybe simple reload?
-            window.location.reload(); // Simple refresh to pick up new name from updated contacts/debts
+            window.location.reload();
         } catch (error) {
             console.error(error);
             alert("Güncelleme başarısız oldu.");
@@ -177,109 +182,135 @@ export const PersonDetail = () => {
     if (loading) return <div className="p-4 text-center">Yükleniyor...</div>;
 
     return (
-        <div className="min-h-full bg-background">
+        <div className="min-h-full bg-background pb-24">
             {/* Header */}
             <header className="bg-surface sticky top-0 z-10 shadow-sm transition-colors duration-200">
-                <div className="max-w-2xl mx-auto">
-                    <div className="absolute left-4 top-3">
+                <div className="max-w-2xl mx-auto relative">
+                    {/* Top Bar */}
+                    <div className="flex justify-between items-center px-4 pt-2 pb-0">
                         <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-text-secondary hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
                             <ArrowLeft size={20} />
                         </button>
+
+                        {/* More Options */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowMenu(!showMenu)}
+                                className="p-2 -mr-2 text-text-secondary hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                            >
+                                <MoreVertical size={20} />
+                            </button>
+
+                            {/* Dropdown Menu */}
+                            {showMenu && (
+                                <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
+                                    <div className="absolute right-0 top-full mt-2 w-48 bg-surface rounded-xl shadow-xl border border-border z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                        {contactId ? (
+                                            <button
+                                                onClick={() => { setShowEditModal(true); setShowMenu(false); }}
+                                                className="w-full text-left px-4 py-3 text-sm font-medium text-text-primary hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                                            >
+                                                <Edit2 size={16} /> Düzenle
+                                            </button>
+                                        ) : (
+                                            <button
+                                                disabled
+                                                className="w-full text-left px-4 py-3 text-sm font-medium text-text-secondary opacity-50 cursor-not-allowed flex items-center gap-2"
+                                            >
+                                                <Edit2 size={16} /> Düzenle
+                                            </button>
+                                        )}
+                                        <div className="h-px bg-border my-0"></div>
+                                        <button
+                                            onClick={() => { handleDelete(); setShowMenu(false); }}
+                                            className="w-full text-left px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2"
+                                        >
+                                            <Trash2 size={16} /> Kişiyi Sil
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
-                    <div className="flex flex-col items-center justify-center pt-6 pb-4 w-full">
-                        <div className="mb-3">
+
+                    <div className={clsx(
+                        "flex flex-col items-center justify-center w-full px-4 transition-all duration-300 ease-in-out",
+                        isScrolled ? "scale-75 -mt-6 pb-0 opacity-90" : "pt-0 pb-4 -mt-2 opacity-100"
+                    )}>
+                        <div className={clsx("transition-all duration-300", isScrolled ? "mb-1" : "mb-3")}>
                             <Avatar
                                 name={personInfo.name}
-                                size="xl"
+                                size={isScrolled ? 'md' : 'xl'}
                                 status={isRegisteredUser ? 'system' : 'contact'}
-                                className="shadow-md"
+                                className="shadow-md transition-all duration-300"
                             />
                         </div>
                         <h1 className="text-xl font-bold text-text-primary text-center leading-tight">{personInfo.name}</h1>
                         <p className="text-sm text-text-secondary font-medium mt-1">{formatPhoneNumber(personInfo.phone || '')}</p>
+
+
                     </div>
                 </div>
 
                 {/* Actions - Distinct Area */}
-                <div className="px-4 py-3 bg-gray-50 dark:bg-slate-900/50 border-t border-b border-gray-100 dark:border-slate-800 flex items-center justify-around gap-2 overflow-x-auto">
+                <div className={clsx(
+                    "px-4 bg-gray-50 dark:bg-slate-900/50 flex items-center justify-center gap-4 transition-all duration-300 ease-in-out overflow-hidden border-t border-b border-gray-100 dark:border-slate-800",
+                    isScrolled ? "max-h-0 py-0 opacity-0 border-none" : "max-h-24 py-3 opacity-100"
+                )}>
+
+                    {/* Primary Action: Create Debt */}
+                    <button
+                        onClick={() => setShowCreateModal(true)}
+                        className="flex flex-col items-center gap-1 group cursor-pointer"
+                    >
+                        <div className="w-12 h-12 rounded-full bg-primary text-white shadow-lg shadow-blue-500/30 flex items-center justify-center hover:bg-blue-600 active:scale-95 transition-all">
+                            <Plus size={24} className="stroke-[3]" />
+                        </div>
+                        <span className="text-[11px] font-bold text-primary">Yeni İşlem</span>
+                    </button>
+
+                    <div className="w-px h-8 bg-gray-300 dark:bg-slate-700 mx-2"></div>
                     {/* Message */}
                     <a
                         href={`https://wa.me/${cleanPhoneNumber(personInfo.phone || '')}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex flex-col items-center gap-1 min-w-[64px] group cursor-pointer"
+                        className="flex flex-col items-center gap-1 group cursor-pointer"
                     >
-                        <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 flex items-center justify-center group-hover:bg-blue-50 dark:group-hover:bg-slate-700 transition-colors shadow-sm">
+                        <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-green-600 dark:text-green-500 flex items-center justify-center group-hover:bg-green-50 dark:group-hover:bg-slate-700 transition-colors shadow-sm">
                             <MessageCircle size={20} />
                         </div>
-                        <span className="text-[10px] text-gray-600 dark:text-slate-400 font-medium group-hover:text-blue-600 transition-colors">Mesaj</span>
+                        <span className="text-[10px] text-gray-500 font-medium">WhatsApp</span>
                     </a >
 
                     {/* Call */}
                     < a
                         href={`tel:${personInfo.phone || ''}`}
-                        className="flex flex-col items-center gap-1 min-w-[64px] group cursor-pointer"
+                        className="flex flex-col items-center gap-1 group cursor-pointer"
                     >
-                        <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-green-600 dark:text-green-400 flex items-center justify-center group-hover:bg-green-50 dark:group-hover:bg-slate-700 transition-colors shadow-sm">
+                        <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-blue-600 dark:text-blue-500 flex items-center justify-center group-hover:bg-blue-50 dark:group-hover:bg-slate-700 transition-colors shadow-sm">
                             <Phone size={20} />
                         </div>
-                        <span className="text-[10px] text-gray-600 dark:text-slate-400 font-medium group-hover:text-green-600 transition-colors">Ara</span>
+                        <span className="text-[10px] text-gray-500 font-medium">Ara</span>
                     </a >
 
-                    {/* Invite (only if not registered) */}
+                    {/* Invite */}
                     {
                         !isRegisteredUser && (
                             <a
                                 href={`https://wa.me/${cleanPhoneNumber(personInfo.phone || '')}?text=DebtDert'e gel!`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex flex-col items-center gap-1 min-w-[64px] group cursor-pointer"
+                                className="flex flex-col items-center gap-1 group cursor-pointer"
                             >
-                                <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-indigo-600 dark:text-indigo-400 flex items-center justify-center group-hover:bg-indigo-50 dark:group-hover:bg-slate-700 transition-colors shadow-sm">
+                                <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-indigo-600 dark:text-indigo-500 flex items-center justify-center group-hover:bg-indigo-50 dark:group-hover:bg-slate-700 transition-colors shadow-sm">
                                     <Share2 size={20} />
                                 </div>
-                                <span className="text-[10px] text-gray-600 dark:text-slate-400 font-medium group-hover:text-indigo-600 transition-colors">Davet Et</span>
+                                <span className="text-[10px] text-gray-500 font-medium">Davet</span>
                             </a>
                         )
                     }
-
-
-                    {/* Edit - Active if Contact Found */}
-                    {
-                        contactId ? (
-                            <button
-                                onClick={() => setShowEditModal(true)}
-                                className="flex flex-col items-center gap-1 min-w-[64px] group"
-                            >
-                                <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-400 flex items-center justify-center group-hover:bg-gray-100 dark:group-hover:bg-slate-700 transition-colors shadow-sm">
-                                    <Edit2 size={20} />
-                                </div>
-                                <span className="text-[10px] text-gray-600 dark:text-slate-400 font-medium group-hover:text-gray-900 transition-colors">Düzenle</span>
-                            </button>
-                        ) : (
-                            <button
-                                onClick={() => alert("Bu kişi rehberinizde kayıtlı değil.")}
-                                className="flex flex-col items-center gap-1 min-w-[64px] group opacity-50"
-                            >
-                                <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-400 flex items-center justify-center cursor-not-allowed">
-                                    <Edit2 size={20} />
-                                </div>
-                                <span className="text-[10px] text-gray-400 font-medium">Düzenle</span>
-                            </button>
-                        )
-                    }
-
-                    {/* Delete */}
-                    <button
-                        onClick={handleDelete}
-                        className="flex flex-col items-center gap-1 min-w-[64px] group"
-                    >
-                        <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-red-500 flex items-center justify-center group-hover:bg-red-50 dark:group-hover:bg-red-900/10 transition-colors shadow-sm">
-                            <Trash2 size={20} />
-                        </div>
-                        <span className="text-[10px] text-gray-600 dark:text-slate-400 font-medium group-hover:text-red-600 transition-colors">Sil</span>
-                    </button>
-
                 </div >
             </header >
 
@@ -329,31 +360,13 @@ export const PersonDetail = () => {
                 </div>
             </main>
 
-            {/* FAB to Add Debt to THIS person */}
-            <button
-                onClick={() => setShowCreateModal(true)}
-                className="fixed bottom-24 right-6 bg-primary text-white p-4 rounded-full shadow-lg hover:bg-blue-700 active:scale-90 transition-all z-20"
-            >
-                <Plus size={24} />
-            </button>
-
             <CreateDebtModal
                 isOpen={showCreateModal}
                 onClose={() => setShowCreateModal(false)}
-                initialPhoneNumber={id} // Pre-fill with this person's ID/Phone
-                targetUser={
-                    // Pass full object if possible, but we might only have ID.
-                    // If we have personDebts, we can try to find the full object or just pass ID.
-                    // For now, passing initialPhoneNumber is enough, modal handles search if needed, but we want to lock it.
-                    // Actually we can pass undefined targetUser and let initialPhoneNumber do work, OR pass a dummy object.
-                    // Let's just implement the submit handler.
-                    undefined
-                }
+                initialPhoneNumber={id}
+                targetUser={undefined}
                 onSubmit={async (borrowerId, borrowerName, amount, type, currency, note, dueDate, installments, canBorrowerAddPayment, requestApproval) => {
                     if (!user) return;
-                    // For PersonDetail, we are already focused on a person.
-                    // The Modal handles the UI but we must call createDebt.
-                    // Note: borrowerId coming from Modal might be the phone number or UID.
                     await import('../services/db').then(({ createDebt }) => createDebt(
                         user.uid,
                         user.displayName || 'Bilinmeyen',

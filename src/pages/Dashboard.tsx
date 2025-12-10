@@ -2,28 +2,38 @@ import { useState, useMemo, useEffect } from 'react';
 import { useDebts } from '../hooks/useDebts';
 import { useAuth } from '../hooks/useAuth';
 import { useContacts } from '../hooks/useContacts';
-import { DebtCard } from '../components/DebtCard';
+import { useContactName } from '../hooks/useContactName';
+import { ContactRow } from '../components/ContactRow';
 import { CreateDebtModal } from '../components/CreateDebtModal';
 import { NotificationsModal } from '../components/NotificationsModal';
-import { Toggle } from '../components/Toggle';
 import { useNotifications } from '../hooks/useNotifications';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Filter, ArrowUpRight, ArrowDownLeft, Wallet, Bell, Sun, Moon } from 'lucide-react';
+import { Plus, Wallet, Bell, Sun, Moon, ArrowRight } from 'lucide-react';
 import { createDebt } from '../services/db';
 import { formatCurrency } from '../utils/format';
 import { useTheme } from '../context/ThemeContext';
 import { fetchRates, convertToTRY, type CurrencyRates } from '../services/currency';
 import clsx from 'clsx';
 import type { Debt, Installment } from '../types';
-import { SwipeableItem } from '../components/SwipeableItem';
-
 import { EditDebtModal } from '../components/EditDebtModal';
-import { softDeleteDebt, updateDebt } from '../services/db';
+import { updateDebt } from '../services/db';
 import { cleanPhoneNumber } from '../utils/phone';
+import { formatDistanceToNow } from 'date-fns';
+import { tr } from 'date-fns/locale';
 
+// Types
 type FilterType = 'ALL' | 'RECEIVABLES' | 'PAYABLES';
-type SortType = 'DATE_DESC' | 'DATE_ASC' | 'AMOUNT_DESC' | 'AMOUNT_ASC';
 type TimeFilter = 'ALL' | 'THIS_WEEK' | 'THIS_MONTH';
+
+interface ContactSummary {
+    id: string; // The unique identifier for the contact (User ID or Phone Number)
+    name: string;
+    netBalance: number;
+    currency: string;
+    lastActivity: Date;
+    lastActionSnippet: string;
+    status: 'none' | 'system' | 'contact';
+}
 
 export const Dashboard = () => {
     const { debts, loading } = useDebts();
@@ -34,41 +44,12 @@ export const Dashboard = () => {
     const [showNotifications, setShowNotifications] = useState(false);
     const { notifications } = useNotifications();
     const { isContact } = useContacts();
+    const { resolveName } = useContactName();
     const [editingDebt, setEditingDebt] = useState<Debt | null>(null);
 
-    const handleSwipeDelete = async (debtId: string) => {
-        if (confirm("Bu kaydı silmek istediğinize emin misiniz? Çöp kutusuna taşınacaktır.")) {
-            await softDeleteDebt(debtId);
-        }
-    };
-
-    const handleSwipeEdit = (debt: Debt) => {
-        setEditingDebt(debt);
-    };
-
-    const handleUpdateDebt = async (debtId: string, data: Partial<Debt>) => {
-        await updateDebt(debtId, data);
-        setEditingDebt(null);
-    };
-
-    const getDebtUserStatus = (debt: Debt) => {
-        if (!user) return 'none';
-        const isLender = debt.lenderId === user.uid;
-        const otherId = isLender ? debt.borrowerId : debt.lenderId;
-
-        // Heuristic: UIDs are usually long (>20 chars), Phone numbers are shorter
-        const isSystemUser = otherId.length > 20;
-        const isUserContact = isContact(otherId);
-
-        if (isSystemUser) return 'system'; // Green (Registered)
-        if (isUserContact) return 'contact'; // Blue (Only Contact)
-        return 'none';
-    };
-
+    // State
     const [filterType, setFilterType] = useState<FilterType>('ALL');
-    const [sortType, setSortType] = useState<SortType>('DATE_DESC');
     const [timeFilter, setTimeFilter] = useState<TimeFilter>('ALL');
-    const [includePending, setIncludePending] = useState(false);
     const [selectedCurrency, setSelectedCurrency] = useState<string>('ALL');
     const [rates, setRates] = useState<CurrencyRates | null>(null);
 
@@ -89,9 +70,7 @@ export const Dashboard = () => {
     ) => {
         if (!user) return;
         try {
-            // Ensure we pass a clean phone number if it's not a UID
             const targetId = borrowerId.length <= 15 ? cleanPhoneNumber(borrowerId) : borrowerId;
-
             await createDebt(
                 user.uid,
                 user.displayName || 'Bilinmeyen',
@@ -107,401 +86,431 @@ export const Dashboard = () => {
             );
         } catch (error) {
             console.error(error);
-            alert("Borç oluşturulurken bir hata oluştu.");
+            alert("Hata oluştu.");
         }
     };
 
-    // Calculations & Filtering
+    const handleUpdateDebt = async (debtId: string, data: Partial<Debt>) => {
+        await updateDebt(debtId, data);
+        setEditingDebt(null);
+    };
+
+    // Helper to determine contact status
+    const getContactStatus = (id: string): 'none' | 'system' | 'contact' => {
+        if (!user) return 'none';
+        const isSystemUser = id.length > 20; // Basic check for UID vs Phone
+        const isUserContact = isContact(id);
+        if (isSystemUser) return 'system';
+        if (isUserContact) return 'contact';
+        return 'none';
+    };
+
+    // Calculations & Aggregation
     const useMemoResult = useMemo(() => {
-        if (!user) return { incomingRequests: [], filteredDebts: [], totalsByCurrency: {}, availableCurrencies: [], grandTotal: { receivables: 0, payables: 0 } };
+        if (!user || !rates) return {
+            incomingRequests: [],
+            contactSummaries: [],
+            availableCurrencies: [],
+            grandTotal: { receivables: 0, payables: 0, net: 0, currency: 'TRY' }
+        };
 
-        let processedDebts = [...debts];
+        const incoming: Debt[] = [];
+        const contactMap = new Map<string, {
+            name: string;
+            balance: number;
+            lastActivity: Date;
+            lastSnippet: string;
+        }>();
 
-        // 1. Filter by Type
-        if (filterType === 'RECEIVABLES') {
-            processedDebts = processedDebts.filter(d => d.lenderId === user.uid);
-        } else if (filterType === 'PAYABLES') {
-            processedDebts = processedDebts.filter(d => d.borrowerId === user.uid);
-        }
+        let totalReceivables = 0;
+        let totalPayables = 0;
+        const currencies = new Set<string>();
 
-        // 2. Filter by Time
+        // 1. Process all debts
+        debts.forEach(d => {
+            const isCreator = d.createdBy === user.uid;
+
+            // Collect currencies for scanner
+            if (d.currency) currencies.add(d.currency);
+
+            // Pending Requests Handling
+            if (d.status === 'PENDING' && !isCreator) {
+                // Respect currency filter for incoming as well? Usually incoming should always be visible.
+                // Let's filter visually if needed, but 'incoming' list is usually separate. 
+                // Let's keep incoming always visible or filter? User said "doviz filtreleme neden silindi".
+                // Usually affects the main list. Let's Filter incoming too for consistency if strict.
+                // But for now, let's keep incoming global, as they are alerts.
+                incoming.push(d);
+                return;
+            }
+
+            if (d.status === 'REJECTED') return;
+
+            // GLOBAL CURRENCY FILTER CHECK
+            // If selectedCurrency is not ALL, and debt currency doesn't match, skip it for aggregation
+            if (selectedCurrency !== 'ALL' && (d.currency || 'TRY') !== selectedCurrency) {
+                return;
+            }
+
+            const isActiveForBalance = d.status === 'ACTIVE' || d.status === 'PARTIALLY_PAID';
+
+            // Identify Other Party
+            // Identify Other Party
+            const isLender = d.lenderId === user.uid;
+            const otherId = isLender ? d.borrowerId : d.lenderId;
+            const fallbackName = isLender ? d.borrowerName : d.lenderName;
+
+            // Resolve Name if new or check if we have a better one?
+            // Since we group by ID, we only need to set the name once or keep the best one.
+            // But for simplicity in this loop, let's resolve it if we haven't added it yet.
+
+            let displayName = fallbackName;
+
+            if (!contactMap.has(otherId)) {
+                const resolution = resolveName(otherId, fallbackName);
+                displayName = resolution.displayName;
+
+                contactMap.set(otherId, {
+                    name: displayName,
+                    balance: 0,
+                    lastActivity: new Date(0),
+                    lastSnippet: ''
+                });
+            }
+
+            const existing = contactMap.get(otherId)!;
+
+            // Calculate Amount
+            // If Single Currency selected, use raw amount. If ALL, use TRY.
+            let amountToAdd = d.remainingAmount;
+            if (selectedCurrency === 'ALL') {
+                amountToAdd = convertToTRY(d.remainingAmount, d.currency || 'TRY', rates);
+            }
+
+            // Update Balance
+            if (isActiveForBalance) {
+                if (isLender) {
+                    existing.balance += amountToAdd;
+                    totalReceivables += amountToAdd;
+                } else {
+                    existing.balance -= amountToAdd;
+                    totalPayables += amountToAdd;
+                }
+            }
+
+            // Update Last Activity
+            // We consider this debt for activity log even if it's pending (if I created it)
+            const debtDate = d.createdAt?.toDate() || new Date(0);
+            if (debtDate > existing.lastActivity) {
+                existing.lastActivity = debtDate;
+                const action = d.status === 'PAID' ? 'Ödendi' : (isLender ? 'Borç verdin' : 'Borç aldın');
+                existing.lastSnippet = `${action} • ${formatDistanceToNow(debtDate, { addSuffix: true, locale: tr })}`;
+            }
+
+            contactMap.set(otherId, existing);
+        });
+
+        // 2. Convert Map to List
+        let summaries: ContactSummary[] = Array.from(contactMap.entries()).map(([id, data]) => ({
+            id,
+            name: data.name,
+            netBalance: data.balance,
+            currency: selectedCurrency === 'ALL' ? 'TRY' : selectedCurrency,
+            lastActivity: data.lastActivity,
+            lastActionSnippet: data.lastSnippet,
+            status: getContactStatus(id)
+        }));
+
+        // 3. Filters
+        // Time Filter
         const now = new Date();
         if (timeFilter === 'THIS_WEEK') {
             const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-            processedDebts = processedDebts.filter(d => d.createdAt?.toDate() >= oneWeekAgo);
+            summaries = summaries.filter(c => c.lastActivity >= oneWeekAgo);
         } else if (timeFilter === 'THIS_MONTH') {
             const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-            processedDebts = processedDebts.filter(d => d.createdAt?.toDate() >= oneMonthAgo);
+            summaries = summaries.filter(c => c.lastActivity >= oneMonthAgo);
         }
 
-        // 3. Sort
-        processedDebts.sort((a, b) => {
-            switch (sortType) {
-                case 'DATE_DESC':
-                    return (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0);
-                case 'DATE_ASC':
-                    return (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0);
-                case 'AMOUNT_DESC':
-                    return b.remainingAmount - a.remainingAmount;
-                case 'AMOUNT_ASC':
-                    return a.remainingAmount - b.remainingAmount;
-                default:
-                    return 0;
-            }
-        });
-
-        // Totals & Incoming
-        const incoming: Debt[] = [];
-        const totals: Record<string, { receivables: number; payables: number }> = {};
-        const currencies = new Set<string>();
-
-        // Initialize TRY to ensure it always exists
-        totals['TRY'] = { receivables: 0, payables: 0 };
-        currencies.add('TRY');
-
-        debts.forEach(d => {
-            const isCreator = d.createdBy === user.uid;
-            const isPending = d.status === 'PENDING';
-            const isActive = d.status === 'ACTIVE' || d.status === 'PARTIALLY_PAID';
-
-            // Incoming Requests: Pending AND NOT created by me
-            if (isPending && !isCreator) {
-                incoming.push(d);
-            }
-
-            // Totals Logic
-            let shouldIncludeInTotals = false;
-            if (isCreator) {
-                if (d.status !== 'REJECTED' && d.status !== 'PAID') {
-                    shouldIncludeInTotals = true;
-                }
-            } else {
-                if (isActive) {
-                    shouldIncludeInTotals = true;
-                } else if (isPending && includePending) {
-                    shouldIncludeInTotals = true;
-                }
-            }
-
-            if (shouldIncludeInTotals) {
-                const currency = d.currency || 'TRY';
-                currencies.add(currency);
-                if (!totals[currency]) totals[currency] = { receivables: 0, payables: 0 };
-
-                if (d.lenderId === user.uid) {
-                    totals[currency].receivables += d.remainingAmount;
-                } else {
-                    totals[currency].payables += d.remainingAmount;
-                }
-            }
-        });
-
-        // Main List Filtering
-        const finalFilteredDebts = processedDebts.filter(d => {
-            const isCreator = d.createdBy === user.uid;
-            const isPending = d.status === 'PENDING';
-            const isActive = d.status === 'ACTIVE' || d.status === 'PARTIALLY_PAID';
-
-            // Exclude Incoming Requests from main list (they are in the separate box)
-            if (isPending && !isCreator) return false;
-
-            // Visibility Logic
-            if (isCreator) {
-                return true; // Always show my created debts
-            } else {
-                // Created by others
-                if (isActive) return true;
-                if (isPending && includePending) return true;
-                return false;
-            }
-        });
-
-        // Calculate Grand Total in TRY if 'ALL' is selected
-        let grandTotalReceivables = 0;
-        let grandTotalPayables = 0;
-
-        if (selectedCurrency === 'ALL' && rates) {
-            Object.entries(totals).forEach(([curr, amounts]) => {
-                grandTotalReceivables += convertToTRY(amounts.receivables, curr, rates);
-                grandTotalPayables += convertToTRY(amounts.payables, curr, rates);
-            });
+        // Type Filter (Receivables / Payables)
+        if (filterType === 'RECEIVABLES') {
+            summaries = summaries.filter(c => c.netBalance > 0);
+        } else if (filterType === 'PAYABLES') {
+            summaries = summaries.filter(c => c.netBalance < 0);
         }
 
-        // Filter by Currency
-        const currencyFilteredDebts = finalFilteredDebts.filter(d => {
-            if (selectedCurrency === 'ALL') return true;
-            return (d.currency || 'TRY') === selectedCurrency;
+        // 4. Sorting: 
+        // Rule: Active (Non-zero) first (sorted by date), Then Settled (Zero) last (sorted by date).
+        summaries.sort((a, b) => {
+            const aIsSettled = a.netBalance === 0;
+            const bIsSettled = b.netBalance === 0;
+
+            if (aIsSettled && !bIsSettled) return 1; // a is settled, put it after b
+            if (!aIsSettled && bIsSettled) return -1; // b is settled, put a before b
+
+            // Both have same settled status, sort by date desc
+            return b.lastActivity.getTime() - a.lastActivity.getTime();
         });
 
         return {
             incomingRequests: incoming,
-            filteredDebts: currencyFilteredDebts,
-            totalsByCurrency: totals,
+            contactSummaries: summaries,
             availableCurrencies: Array.from(currencies).sort(),
             grandTotal: {
-                receivables: grandTotalReceivables,
-                payables: grandTotalPayables
+                receivables: totalReceivables,
+                payables: totalPayables,
+                net: totalReceivables - totalPayables,
+                currency: selectedCurrency === 'ALL' ? 'TRY' : selectedCurrency
             }
         };
-    }, [debts, user, filterType, sortType, timeFilter, includePending, selectedCurrency, rates]);
 
-    const { incomingRequests, filteredDebts, totalsByCurrency, availableCurrencies, grandTotal } = useMemoResult;
+    }, [debts, user, rates, filterType, timeFilter, selectedCurrency]);
 
+    const { incomingRequests, contactSummaries, grandTotal, availableCurrencies } = useMemoResult;
     const { theme, toggleTheme } = useTheme();
 
+    const isNetPositive = grandTotal.net >= 0;
 
-
-    if (loading) return <div className="flex justify-center items-center h-screen text-text-primary">Yükleniyor...</div>;
+    if (loading) return <div className="flex justify-center items-center h-screen text-lg text-text-primary">Yükleniyor...</div>;
 
     return (
-        <div className="min-h-full bg-background transition-colors duration-200">
+        <div className="min-h-full bg-gray-50 dark:bg-slate-900 pb-28 transition-colors duration-200">
             {/* Header */}
-            {/* Top Bar - Sticky */}
-            <div className="sticky top-0 left-0 right-0 z-50 bg-surface shadow-sm h-[50px] transition-colors duration-200">
-                <div className="max-w-2xl mx-auto px-4 h-full flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => setShowNotifications(true)}
-                            className="p-2 text-text-secondary hover:bg-background rounded-full relative transition-colors"
-                        >
-                            <Bell size={20} />
-                            {notifications.length > 0 && (
-                                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-surface"></span>
-                            )}
-                        </button>
-                        <h1 className="text-xl font-bold text-text-primary"></h1>
+            <div className="bg-white dark:bg-slate-800 px-4 pt-4 pb-2 flex justify-between items-center shadow-sm z-50 sticky top-0">
+                <div className="flex flex-col">
+                    <span className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">Cüzdanım</span>
+                    <h1 className="text-lg font-bold text-gray-800 dark:text-white truncate max-w-[200px]">{user?.displayName || 'Kullanıcı'}</h1>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button onClick={toggleTheme} className="p-2.5 bg-gray-100 dark:bg-slate-700 rounded-full hover:bg-gray-200 transition-colors">
+                        {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                    </button>
+                    <button onClick={() => setShowNotifications(true)} className="p-2.5 bg-gray-100 dark:bg-slate-700 rounded-full relative hover:bg-gray-200 transition-colors">
+                        <Bell size={18} />
+                        {notifications.length > 0 && (
+                            <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+                        )}
+                    </button>
+                </div>
+            </div>
+
+            {/* HERO CARD - NET WORTH */}
+            <div className="px-4 py-4 bg-white dark:bg-slate-800 pb-6 rounded-b-3xl shadow-sm mb-4">
+                <div className={clsx(
+                    "rounded-3xl p-6 shadow-xl text-white transition-all relative overflow-hidden",
+                    isNetPositive
+                        ? "bg-gradient-to-br from-emerald-600 to-teal-800 shadow-emerald-900/20"
+                        : "bg-gradient-to-br from-rose-600 to-red-800 shadow-rose-900/20"
+                )}>
+                    {/* Pattern */}
+                    <div className="absolute top-0 right-0 p-4 opacity-10">
+                        <Wallet size={120} />
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="relative z-10">
+                        <div className="flex items-center justify-between mb-2 opacity-90">
+                            <div className="flex items-center gap-2">
+                                <Wallet size={18} />
+                                <span className="text-sm font-medium">Net Varlık ({selectedCurrency === 'ALL' ? 'Tahmini' : selectedCurrency})</span>
+                            </div>
+                            <span className="text-xs bg-white/20 px-2 py-0.5 rounded-md font-bold backdrop-blur-sm">{grandTotal.currency}</span>
+                        </div>
+
+                        <div className="text-4xl font-bold tracking-tight mb-6 tabular-nums">
+                            {formatCurrency(grandTotal.net, grandTotal.currency)}
+                        </div>
+
+                        <div className="flex gap-4 pt-4 border-t border-white/10">
+                            <div className="flex-1">
+                                <p className="text-xs opacity-70 mb-1 font-medium">Toplam Alacak</p>
+                                <p className="font-bold text-lg text-emerald-100 tabular-nums">
+                                    +{formatCurrency(grandTotal.receivables, grandTotal.currency)}
+                                </p>
+                            </div>
+                            <div className="w-px bg-white/10"></div>
+                            <div className="flex-1">
+                                <p className="text-xs opacity-70 mb-1 font-medium">Toplam Borç</p>
+                                <p className="font-bold text-lg text-rose-100 tabular-nums">
+                                    -{formatCurrency(grandTotal.payables, grandTotal.currency)}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* CURRENCY SELECTOR */}
+                <div className="mt-4">
+                    <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2">
                         <button
-                            onClick={toggleTheme}
-                            className="p-2 text-text-secondary hover:bg-background rounded-full transition-colors"
-                        >
-                            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-                        </button>
-                        <button
-                            onClick={() => setShowFilters(!showFilters)}
+                            onClick={() => setSelectedCurrency('ALL')}
                             className={clsx(
-                                "p-2 rounded-full transition-colors",
-                                showFilters ? "bg-blue-500/10 text-primary" : "text-text-secondary hover:bg-background"
+                                "px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all border",
+                                selectedCurrency === 'ALL'
+                                    ? "bg-gray-900 text-white border-gray-900 dark:bg-white dark:text-slate-900"
+                                    : "bg-gray-100 text-gray-600 border-transparent hover:bg-gray-200 dark:bg-slate-700 dark:text-gray-300"
                             )}
                         >
-                            <Filter size={18} />
+                            Tümü (₺)
                         </button>
+                        {availableCurrencies.map(currency => {
+                            if (currency === 'TRY' && selectedCurrency === 'ALL') return null;
+                            if (currency === 'TRY') {
+                                // Optional: Decide how to show TRY option when filtering
+                            }
+                            return (
+                                <button
+                                    key={currency}
+                                    onClick={() => setSelectedCurrency(currency)}
+                                    className={clsx(
+                                        "px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all border",
+                                        selectedCurrency === currency
+                                            ? "bg-gray-900 text-white border-gray-900 dark:bg-white dark:text-slate-900"
+                                            : "bg-gray-100 text-gray-600 border-transparent hover:bg-gray-200 dark:bg-slate-700 dark:text-gray-300"
+                                    )}
+                                >
+                                    {currency}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             </div>
 
-            {/* Collapsible Summary & Filters */}
-            {/* Summary & Filters - Sticky */}
-            <div className="sticky top-[50px] left-0 right-0 z-40 bg-surface shadow-sm transition-transform duration-300 border-t border-border/50">
-                <div className="max-w-2xl mx-auto px-4 py-2">
-                    {/* Combined Stats & Filters */}
-                    <div className="grid grid-cols-3 gap-2">
-                        {/* Net / All */}
+            {/* Main Content Area */}
+            <main className="px-4 space-y-4 mt-4">
+
+                {/* Filters */}
+                <div className="flex flex-col gap-3">
+                    <div className="flex p-1 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700">
                         <button
                             onClick={() => setFilterType('ALL')}
                             className={clsx(
-                                "p-1.5 rounded-xl shadow-sm border text-center transition-all",
+                                "flex-1 py-2.5 rounded-xl text-sm font-bold transition-all",
                                 filterType === 'ALL'
-                                    ? "bg-primary border-primary text-white ring-2 ring-primary/30"
-                                    : "bg-surface border-border hover:border-primary/50"
-                            )}
-                        >
-                            <div className={clsx("flex justify-center mb-0.5", filterType === 'ALL' ? "text-white/80" : "text-primary")}>
-                                <Wallet size={18} />
-                            </div>
-                            <p className={clsx("text-[10px] mb-0.5", filterType === 'ALL' ? "text-white/80" : "text-text-secondary")}>Net Durum</p>
-                            <p className={clsx("font-bold text-xs sm:text-sm", filterType === 'ALL' ? "text-white" : "text-text-primary")}>
-                                {selectedCurrency === 'ALL' ? (
-                                    formatCurrency((grandTotal?.receivables || 0) - (grandTotal?.payables || 0), 'TRY')
-                                ) : (
-                                    formatCurrency(
-                                        (totalsByCurrency[selectedCurrency]?.receivables || 0) -
-                                        (totalsByCurrency[selectedCurrency]?.payables || 0),
-                                        selectedCurrency
-                                    )
-                                )}
-                            </p>
-                        </button>
-
-                        {/* Receivables */}
-                        <button
-                            onClick={() => setFilterType('RECEIVABLES')}
-                            className={clsx(
-                                "p-1.5 rounded-xl shadow-sm border text-center transition-all",
-                                filterType === 'RECEIVABLES'
-                                    ? "bg-green-600 border-green-600 text-white ring-2 ring-green-200"
-                                    : "bg-surface border-border hover:border-green-500/50"
-                            )}
-                        >
-                            <div className={clsx("flex justify-center mb-0.5", filterType === 'RECEIVABLES' ? "text-green-200" : "text-green-500")}>
-                                <ArrowUpRight size={18} />
-                            </div>
-                            <p className={clsx("text-[10px] mb-0.5", filterType === 'RECEIVABLES' ? "text-green-100" : "text-text-secondary")}>Alacaklar</p>
-                            <p className={clsx("font-bold text-xs sm:text-sm", filterType === 'RECEIVABLES' ? "text-white" : "text-text-primary")}>
-                                {selectedCurrency === 'ALL' ? (
-                                    formatCurrency(grandTotal?.receivables || 0, 'TRY')
-                                ) : (
-                                    formatCurrency(totalsByCurrency[selectedCurrency]?.receivables || 0, selectedCurrency)
-                                )}
-                            </p>
-                        </button>
-
-                        {/* Payables */}
-                        <button
-                            onClick={() => setFilterType('PAYABLES')}
-                            className={clsx(
-                                "p-1.5 rounded-xl shadow-sm border text-center transition-all",
-                                filterType === 'PAYABLES'
-                                    ? "bg-red-600 border-red-600 text-white ring-2 ring-red-200"
-                                    : "bg-surface border-border hover:border-red-500/50"
-                            )}
-                        >
-                            <div className={clsx("flex justify-center mb-0.5", filterType === 'PAYABLES' ? "text-red-200" : "text-red-500")}>
-                                <ArrowDownLeft size={18} />
-                            </div>
-                            <p className={clsx("text-[10px] mb-0.5", filterType === 'PAYABLES' ? "text-red-100" : "text-text-secondary")}>Verecekler</p>
-                            <p className={clsx("font-bold text-xs sm:text-sm", filterType === 'PAYABLES' ? "text-white" : "text-text-primary")}>
-                                {selectedCurrency === 'ALL' ? (
-                                    formatCurrency(grandTotal?.payables || 0, 'TRY')
-                                ) : (
-                                    formatCurrency(totalsByCurrency[selectedCurrency]?.payables || 0, selectedCurrency)
-                                )}
-                            </p>
-                        </button>
-                    </div>
-                    {/* Currency Filter Pills */}
-                    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0 mt-2">
-                        <button
-                            onClick={() => setSelectedCurrency('ALL')}
-                            className={clsx(
-                                "px-3 py-1 rounded-full text-[10px] font-medium whitespace-nowrap transition-all border",
-                                selectedCurrency === 'ALL'
-                                    ? "bg-slate-800 text-white border-slate-800"
-                                    : "bg-surface text-text-secondary border-border hover:border-text-secondary/50"
+                                    ? "bg-gray-100 text-gray-900 dark:bg-slate-700 dark:text-white shadow-sm"
+                                    : "text-gray-500 hover:text-gray-700 dark:text-gray-400"
                             )}
                         >
                             Tümü
                         </button>
-                        {availableCurrencies.map(currency => (
-                            <button
-                                key={currency}
-                                onClick={() => setSelectedCurrency(currency)}
-                                className={clsx(
-                                    "px-3 py-1 rounded-full text-[10px] font-medium whitespace-nowrap transition-all border",
-                                    selectedCurrency === currency
-                                        ? "bg-slate-800 text-white border-slate-800"
-                                        : "bg-surface text-text-secondary border-border hover:border-text-secondary/50"
-                                )}
-                            >
-                                {currency}
-                            </button>
-                        ))}
+                        <button
+                            onClick={() => setFilterType('RECEIVABLES')}
+                            className={clsx(
+                                "flex-1 py-2.5 rounded-xl text-sm font-bold transition-all",
+                                filterType === 'RECEIVABLES'
+                                    ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 shadow-sm"
+                                    : "text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                            )}
+                        >
+                            Alacaklar
+                        </button>
+                        <button
+                            onClick={() => setFilterType('PAYABLES')}
+                            className={clsx(
+                                "flex-1 py-2.5 rounded-xl text-sm font-bold transition-all",
+                                filterType === 'PAYABLES'
+                                    ? "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 shadow-sm"
+                                    : "text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                            )}
+                        >
+                            Verecekler
+                        </button>
                     </div>
                 </div>
-            </div>
 
-            <main className="max-w-2xl mx-auto p-2 space-y-6">
-
-                {/* Filters & Tabs */}
-                <div className="space-y-3">
-                    {/* Sub Filters (Collapsible) */}
-                    {showFilters && (
-                        <div className="bg-surface p-4 rounded-xl shadow-lg border border-slate-700/50 space-y-3 animate-in fade-in slide-in-from-top-2">
-                            <div className="flex justify-between items-center text-text-secondary mb-2">
-                                <span className="text-sm font-medium">Filtreleme Seçenekleri</span>
-                                <button onClick={() => setShowFilters(false)} className="text-xs hover:text-text-primary">Kapat</button>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <select
-                                    value={timeFilter}
-                                    onChange={(e) => setTimeFilter(e.target.value as TimeFilter)}
-                                    className="bg-background border border-slate-700 text-text-primary text-sm rounded-lg px-3 py-2 outline-none focus:border-primary"
-                                >
-                                    <option value="ALL">Tüm Zamanlar</option>
-                                    <option value="THIS_WEEK">Bu Hafta</option>
-                                    <option value="THIS_MONTH">Bu Ay</option>
-                                </select>
-
-                                <select
-                                    value={sortType}
-                                    onChange={(e) => setSortType(e.target.value as SortType)}
-                                    className="bg-background border border-slate-700 text-text-primary text-sm rounded-lg px-3 py-2 outline-none focus:border-primary"
-                                >
-                                    <option value="DATE_DESC">Tarih (Yeni-Eski)</option>
-                                    <option value="DATE_ASC">Tarih (Eski-Yeni)</option>
-                                    <option value="AMOUNT_DESC">Tutar (Çok-Az)</option>
-                                    <option value="AMOUNT_ASC">Tutar (Az-Çok)</option>
-                                </select>
-                            </div>
-                            <div className="pt-2 border-t border-slate-700/50">
-                                <Toggle
-                                    checked={includePending}
-                                    onChange={setIncludePending}
-                                    label="Bekleyenleri Göster"
-                                />
-                            </div>
-                        </div>
-                    )}
-
-                    {/* List */}
-                    <div className="space-y-4">
-                        {/* Incoming Requests Section */}
-                        {includePending && incomingRequests.length > 0 && (
-                            <div className="mb-6">
-                                <h2 className="text-sm font-semibold text-gray-700 mb-3 px-1 flex items-center gap-2">
-                                    <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
-                                    Onay Bekleyenler ({incomingRequests.length})
-                                </h2>
-                                <div className="space-y-3">
-                                    {incomingRequests.map((debt) => (
-                                        <DebtCard
-                                            key={debt.id}
-                                            debt={debt}
-                                            currentUserId={user?.uid || ''}
-                                            onClick={() => navigate(`/debt/${debt.id}`)}
-                                            otherPartyStatus={getDebtUserStatus(debt)}
-                                        />
-                                    ))}
-                                </div>
-                                <div className="my-4 border-b border-gray-200"></div>
-                            </div>
-                        )}
-
-                        {filteredDebts.map((debt) => (
-                            <SwipeableItem
-                                key={debt.id}
-                                onSwipeLeft={() => handleSwipeDelete(debt.id)}
-                                onSwipeRight={() => handleSwipeEdit(debt)}
-                                className="mb-3"
+                {/* Incoming Requests Section (Separate from Contact List) */}
+                {incomingRequests.length > 0 && (
+                    <div className="mb-6 space-y-3 animate-in slide-in-from-top-4 fade-in">
+                        {/* Incoming Requests Banner */}
+                        {incomingRequests.length > 0 && (
+                            <div
+                                onClick={() => navigate('/pending-requests')}
+                                className="mb-4 mx-1 p-3 bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-xl flex items-center justify-between cursor-pointer active:scale-[0.99] transition-transform"
                             >
-                                <DebtCard
-                                    debt={debt}
-                                    currentUserId={user?.uid || ''}
-                                    onClick={() => navigate(`/debt/${debt.id}`)}
-                                    otherPartyStatus={getDebtUserStatus(debt)}
-                                />
-                            </SwipeableItem>
-                        ))}
-
-                        {filteredDebts.length === 0 && incomingRequests.length === 0 && (
-                            <div className="text-center py-10 text-gray-500">
-                                <Filter size={32} className="mx-auto mb-2 opacity-20" />
-                                <p>Kayıt bulunamadı.</p>
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-orange-500 text-white p-2 rounded-full shadow-sm">
+                                        <Bell size={18} fill="currentColor" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-bold text-gray-800 dark:text-gray-100">
+                                            {incomingRequests.length} Yeni Onay İsteği
+                                        </span>
+                                        <span className="text-xs text-gray-600 dark:text-gray-400">
+                                            İşlem yapmak için dokun
+                                        </span>
+                                    </div>
+                                </div>
+                                <ArrowRight size={18} className="text-orange-400" />
                             </div>
                         )}
                     </div>
+                )}
+
+                {/* Contact List Title */}
+                <div className="flex items-center justify-between px-1 pt-2">
+                    <h2 className="text-lg font-bold text-gray-800 dark:text-white">Kişiler</h2>
+                    <button
+                        onClick={() => setShowFilters(!showFilters)}
+                        className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded-lg"
+                    >
+                        {showFilters ? 'Gizle' : 'Filtrele'}
+                    </button>
+                </div>
+
+                {/* Advanced Filters Panel - Mostly Time */}
+                {showFilters && (
+                    <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 animate-in slide-in-from-top-2">
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-500 ml-1">Son İşlem Zamanı</label>
+                            <select
+                                value={timeFilter}
+                                onChange={(e) => setTimeFilter(e.target.value as TimeFilter)}
+                                className="w-full bg-gray-50 dark:bg-slate-900 border-0 rounded-xl px-3 py-3 text-sm text-gray-800 dark:text-gray-200 ring-1 ring-gray-200 dark:ring-slate-700 focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="ALL">Tüm Zamanlar</option>
+                                <option value="THIS_WEEK">Bu Hafta İşlem Yaptıklarım</option>
+                                <option value="THIS_MONTH">Bu Ay İşlem Yaptıklarım</option>
+                            </select>
+                        </div>
+                    </div>
+                )}
+
+                {/* CONTACT SUMMARY LIST */}
+                <div className="space-y-3 pb-20">
+                    {contactSummaries.map((contact) => (
+                        <ContactRow
+                            key={contact.id}
+                            name={contact.name}
+                            netBalance={contact.netBalance}
+                            currency={contact.currency}
+                            lastActionSnippet={contact.lastActionSnippet}
+                            onClick={() => navigate(`/person/${cleanPhoneNumber(contact.id)}`)}
+                            status={contact.status}
+                        />
+                    ))}
+
+                    {contactSummaries.length === 0 && incomingRequests.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-20 opacity-60">
+                            <div className="bg-gray-100 dark:bg-slate-800 p-6 rounded-full mb-4">
+                                <Wallet size={40} className="text-gray-400 dark:text-gray-500" />
+                            </div>
+                            <p className="text-gray-600 dark:text-gray-400 font-medium">Bu görünümde kişi yok.</p>
+                            <p className="text-sm text-gray-400 dark:text-gray-600 mt-1">Yeni bir işlem ekleyerek başlayabilirsin.</p>
+                        </div>
+                    )}
                 </div>
             </main>
 
+            {/* BIG FAB BUTTON */}
             <button
                 onClick={() => setShowCreateModal(true)}
-                className="fixed bottom-24 right-4 bg-primary text-white p-4 rounded-full shadow-lg hover:bg-blue-600 active:scale-90 transition-all z-20"
+                className="fixed bottom-6 left-4 right-4 bg-gray-900 dark:bg-blue-600 text-white h-14 rounded-full shadow-2xl shadow-gray-900/20 flex items-center justify-center gap-2 active:scale-95 transition-transform z-40"
             >
                 <Plus size={24} />
+                <span className="font-bold text-lg">Yeni İşlem Ekle</span>
             </button>
 
+            {/* Modals */}
             <CreateDebtModal
                 isOpen={showCreateModal}
                 onClose={() => setShowCreateModal(false)}

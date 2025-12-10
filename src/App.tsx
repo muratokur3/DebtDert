@@ -9,6 +9,7 @@ import { Settings } from './pages/Settings';
 import { QuickDial } from './pages/QuickDial';
 import { Tools } from './pages/Tools';
 import { PersonDetail } from './pages/PersonDetail';
+import { PendingRequests } from './pages/PendingRequests';
 import { Layout } from './components/Layout';
 import { useAuth } from './hooks/useAuth';
 
@@ -46,6 +47,7 @@ function App() {
             <Route path="/person/:id" element={<PersonDetail />} />
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/pending-requests" element={<PendingRequests />} />
           </Route>
         </Routes>
       </Router>

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Delete, UserPlus, Wallet } from 'lucide-react';
+import { Delete, UserPlus, Wallet, User as UserIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { searchUserByPhone, searchContacts } from '../services/db';
+import { searchUserByPhone, searchContacts, createDebt } from '../services/db';
 import { CreateDebtModal } from '../components/CreateDebtModal';
+import { Avatar } from '../components/Avatar';
 import { clsx } from 'clsx';
 import type { User, Contact } from '../types';
 
@@ -15,6 +16,29 @@ export const QuickDial = () => {
     const [foundUser, setFoundUser] = useState<User | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
 
+    // Derived: Current Search Match
+    const activeMatch = searchResults[0] || foundUser;
+
+    // Formatting Helper
+    function formattedPhone(phone: string) {
+        if (!phone) return '';
+        return phone.replace(/(\d{3})(\d{3})(\d{2})(\d{2})/, '$1 $2 $3 $4');
+    }
+
+    // Card Display Data
+    const displayData = {
+        name: activeMatch
+            ? (('name' in activeMatch) ? activeMatch.name : (activeMatch as User).displayName)
+            : 'Yeni İşlem',
+        subtext: activeMatch
+            ? formattedPhone('phoneNumber' in activeMatch ? activeMatch.phoneNumber : (activeMatch as User).phoneNumber)
+            : 'Rehberde Kayıtlı Değil',
+        isMatch: !!activeMatch,
+        type: activeMatch
+            ? (('name' in activeMatch) ? 'Rehberde' : 'Sistemde')
+            : 'Bilinmeyen'
+    };
+
     const handleNumberClick = (num: string) => {
         if (phoneNumber.length < 15) {
             setPhoneNumber(prev => prev + num);
@@ -25,7 +49,7 @@ export const QuickDial = () => {
         setPhoneNumber(prev => prev.slice(0, -1));
     };
 
-    // Search logic
+    // Smart Search Logic
     useEffect(() => {
         const search = async () => {
             if (!user || phoneNumber.length < 3) {
@@ -39,10 +63,14 @@ export const QuickDial = () => {
                 const contacts = await searchContacts(user.uid, phoneNumber);
                 setSearchResults(contacts);
 
-                // 2. Search Global User (only if looks like phone)
+                // 2. Search Global User (only if full phone number)
                 if (phoneNumber.replace(/\D/g, '').length >= 10) {
                     const globalUser = await searchUserByPhone(phoneNumber);
-                    setFoundUser(globalUser);
+                    if (globalUser && globalUser.uid !== user.uid) {
+                        setFoundUser(globalUser);
+                    } else {
+                        setFoundUser(null);
+                    }
                 } else {
                     setFoundUser(null);
                 }
@@ -55,82 +83,131 @@ export const QuickDial = () => {
         return () => clearTimeout(timer);
     }, [phoneNumber, user]);
 
-    const handleAction = () => {
+
+    const handleCardClick = () => {
         if (!phoneNumber) return;
         setShowCreateModal(true);
     };
 
-    const KeypadButton = ({ num, sub }: { num: string, sub?: string }) => (
+    const handleAddToContacts = () => {
+        navigate('/contacts', { state: { initialPhone: phoneNumber } });
+    };
+
+    const handleCreateDebtSubmit = async (
+        borrowerId: string,
+        borrowerName: string,
+        amount: number,
+        type: 'LENDING' | 'BORROWING',
+        currency: string,
+        note?: string,
+        dueDate?: Date,
+        installments?: any[],
+        canBorrowerAddPayment?: boolean
+    ) => {
+        if (!user) return;
+        await createDebt(
+            user.uid,
+            user.displayName || 'Bilinmeyen',
+            borrowerId,
+            borrowerName,
+            amount,
+            type,
+            currency,
+            note,
+            dueDate,
+            installments,
+            canBorrowerAddPayment
+        );
+        setShowCreateModal(false);
+        setPhoneNumber('');
+    };
+
+    const KeypadButton = ({ num, sub, onClick, className, destructive }: { num: React.ReactNode, sub?: string, onClick?: () => void, className?: string, destructive?: boolean }) => (
         <button
-            onClick={() => handleNumberClick(num)}
-            className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 active:bg-gray-400 transition-colors flex flex-col items-center justify-center mx-auto"
+            onClick={onClick || (() => typeof num === 'string' && handleNumberClick(num))}
+            className={clsx(
+                "w-full h-16 sm:h-20 rounded-2xl transition-all active:scale-95 flex flex-col items-center justify-center select-none shadow-sm",
+                destructive
+                    ? "bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 text-red-500 border border-transparent"
+                    : (className || "bg-surface hover:bg-gray-100 dark:hover:bg-slate-700 active:bg-gray-200 dark:active:bg-slate-600 border border-slate-200 dark:border-slate-800")
+            )}
         >
-            <span className="text-2xl sm:text-3xl font-medium text-text-primary">{num}</span>
-            {sub && <span className="text-[9px] sm:text-[10px] font-bold text-text-secondary tracking-widest">{sub}</span>}
+            <span className={clsx("font-medium", typeof num === 'string' ? "text-2xl sm:text-3xl text-text-primary" : "")}>{num}</span>
+            {sub && <span className="text-[10px] uppercase font-bold text-text-secondary mt-0.5 tracking-wider">{sub}</span>}
         </button>
     );
 
     return (
-        <div className="h-full flex flex-col bg-background overflow-hidden">
-            {/* Display Area */}
-            <div className="flex-1 flex flex-col items-center justify-center pb-4 px-6 min-h-0">
-                <div className="text-center space-y-6 w-full max-w-md">
-                    {/* Add Contact Link - Fixed Height Container to prevent shift */}
-                    <div className="h-8 flex items-center justify-center">
-                        {phoneNumber.length >= 10 && !searchResults.length && !foundUser && (
-                            <button
-                                onClick={() => navigate('/contacts')}
-                                className="text-blue-500 text-sm font-medium hover:underline animate-in fade-in slide-in-from-bottom-1"
-                            >
-                                Rehbere Ekle
-                            </button>
-                        )}
-                    </div>
+        <div className="h-full flex flex-col bg-background overflow-hidden relative">
 
-                    {/* Phone Number Display & Delete */}
-                    <div className="relative w-full flex items-center justify-center h-20">
-                        <h1 className={clsx(
-                            "font-medium text-text-primary transition-all truncate w-full text-center px-10",
-                            phoneNumber.length > 13 ? "text-3xl sm:text-4xl tracking-tight" :
-                                phoneNumber.length > 0 ? "text-4xl sm:text-5xl" : "text-3xl sm:text-4xl text-text-secondary/30"
+            {/* TOP: DISPLAY AREA */}
+            <div className="flex-1 flex flex-col items-center justify-start pt-12 p-6 min-h-0 relative space-y-8">
+
+                {/* 1. Raw Phone Number (ALWAYS VISIBLE) */}
+                <div className="text-center w-full px-4 break-all min-h-[4rem] flex items-center justify-center">
+                    {!phoneNumber ? (
+                        <span className="text-text-secondary/20 text-4xl font-light">Numara Girin</span>
+                    ) : (
+                        <span className={clsx(
+                            "font-light text-text-primary transition-all leading-none",
+                            phoneNumber.length > 10 ? "text-4xl" : "text-5xl sm:text-6xl"
                         )}>
-                            {phoneNumber || "Numara Girin"}
-                        </h1>
-                        {phoneNumber.length > 0 && (
-                            <button
-                                onClick={handleDelete}
-                                className="absolute right-0 top-1/2 -translate-y-1/2 p-3 text-text-secondary hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all"
-                            >
-                                <Delete size={32} />
-                            </button>
-                        )}
+                            {formattedPhone(phoneNumber)}
+                        </span>
+                    )}
+                </div>
+
+                {/* 2. Action Card (Visible when typing) */}
+                <div
+                    onClick={handleCardClick}
+                    className={clsx(
+                        "w-full max-w-sm bg-surface rounded-3xl p-4 shadow-xl border border-slate-200 dark:border-slate-700 transform transition-all duration-300 cursor-pointer hover:scale-105 active:scale-100 flex items-center gap-4",
+                        (phoneNumber.length >= 3 || activeMatch) ? "opacity-100 translate-y-0 visible" : "opacity-0 translate-y-8 invisible"
+                    )}
+                >
+                    {/* Avatar / Icon */}
+                    {displayData.isMatch ? (
+                        <Avatar
+                            name={displayData.name}
+                            size="md"
+                            status={displayData.type === 'Rehberde' ? 'contact' : 'system'}
+                            photoURL={activeMatch && 'photoURL' in activeMatch ? (activeMatch as unknown as User).photoURL : undefined}
+                        />
+                    ) : (
+                        <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-text-secondary">
+                            <UserIcon size={24} />
+                        </div>
+                    )}
+
+                    {/* Info */}
+                    <div className="flex-1 overflow-hidden">
+                        <h2 className="text-lg font-bold text-text-primary truncate">{displayData.name}</h2>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm text-text-secondary truncate">{displayData.subtext}</span>
+                            {displayData.isMatch && (
+                                <span className={clsx(
+                                    "text-[10px] px-2 py-0.5 rounded-full font-bold uppercase",
+                                    displayData.type === 'Rehberde'
+                                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                                        : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                )}>
+                                    {displayData.type}
+                                </span>
+                            )}
+                        </div>
                     </div>
 
-                    {/* Matched Contact/User Name */}
-                    <div className="h-20 flex items-center justify-center w-full">
-                        {(searchResults.length > 0 || foundUser) && (
-                            <div
-                                onClick={() => {
-                                    const number = searchResults[0]?.phoneNumber || foundUser?.phoneNumber;
-                                    if (number) setPhoneNumber(number);
-                                }}
-                                className="animate-in fade-in slide-in-from-top-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 p-3 rounded-2xl transition-colors bg-surface/50 border border-transparent hover:border-border w-full"
-                            >
-                                <h2 className="text-2xl font-bold text-text-primary">
-                                    {searchResults[0]?.name || foundUser?.displayName}
-                                </h2>
-                                <p className="text-sm text-text-secondary font-medium">
-                                    {searchResults.length > 0 ? 'Rehberde Kayıtlı' : 'Sistem Kullanıcısı'}
-                                </p>
-                            </div>
-                        )}
+                    {/* Arrow / Action Icon */}
+                    <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/20 text-green-600 flex items-center justify-center">
+                        <Wallet size={20} />
                     </div>
                 </div>
+
             </div>
 
-            {/* Keypad */}
-            <div className="px-6 pb-8 max-w-sm mx-auto w-full flex-none">
-                <div className="grid grid-cols-3 gap-x-6 gap-y-6 mb-4">
+            {/* BOTTOM: KEYPAD */}
+            <div className="flex-none p-6 pb-8 safe-area-bottom w-full max-w-sm mx-auto z-20">
+                <div className="grid grid-cols-3 gap-3 sm:gap-4">
                     <KeypadButton num="1" />
                     <KeypadButton num="2" sub="ABC" />
                     <KeypadButton num="3" sub="DEF" />
@@ -141,31 +218,23 @@ export const QuickDial = () => {
                     <KeypadButton num="8" sub="TUV" />
                     <KeypadButton num="9" sub="WXYZ" />
 
-                    {/* Add Contact Button */}
-                    <div className="flex items-center justify-center">
-                        <button
-                            onClick={() => navigate('/contacts', { state: { initialPhone: phoneNumber } })}
-                            disabled={!phoneNumber || searchResults.length > 0}
-                            className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 active:scale-95 transition-all flex flex-col items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                            <UserPlus size={24} />
-                            <span className="text-[9px] font-bold mt-1">EKLE</span>
-                        </button>
-                    </div>
+                    {/* ACTION: Add Contact */}
+                    <KeypadButton
+                        num={<UserPlus size={28} />}
+                        sub="KAYDET"
+                        onClick={handleAddToContacts}
+                        className="bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-transparent"
+                    />
 
-                    <KeypadButton num="0" sub="+" />
+                    <KeypadButton num="0" sub="+" onClick={() => handleNumberClick('0')} />
 
-                    {/* Create Debt Button */}
-                    <div className="flex items-center justify-center">
-                        <button
-                            onClick={handleAction}
-                            disabled={!phoneNumber}
-                            className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 active:scale-95 transition-all flex flex-col items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                            <Wallet size={24} />
-                            <span className="text-[9px] font-bold mt-1">BORÇ</span>
-                        </button>
-                    </div>
+                    {/* ACTION: DELETE (Replaced Wallet) */}
+                    <KeypadButton
+                        num={<Delete size={28} />}
+                        sub="SİL"
+                        onClick={handleDelete}
+                        destructive
+                    />
                 </div>
             </div>
 
@@ -173,12 +242,8 @@ export const QuickDial = () => {
                 isOpen={showCreateModal}
                 onClose={() => setShowCreateModal(false)}
                 initialPhoneNumber={phoneNumber}
-                onSubmit={async () => {
-                    // This will be handled by the modal's internal logic or passed up
-                    // For now we just pass it to a dummy function or reuse Dashboard logic if possible
-                    // Ideally we should refactor createDebt logic to a hook or context
-                    console.log("Create debt from dial");
-                }}
+                targetUser={activeMatch} // Pass the full object if found
+                onSubmit={handleCreateDebtSubmit}
             />
         </div>
     );

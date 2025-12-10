@@ -20,7 +20,7 @@ export interface Contact {
     createdAt: Timestamp;
 }
 
-export type DebtStatus = 'PENDING' | 'ACTIVE' | 'PARTIALLY_PAID' | 'PAID' | 'REJECTED';
+export type DebtStatus = 'PENDING' | 'ACTIVE' | 'PARTIALLY_PAID' | 'PAID' | 'REJECTED' | 'HIDDEN';
 
 export interface Installment {
     id: string;
@@ -49,6 +49,7 @@ export interface Debt {
     isDeleted?: boolean;
     deletedAt?: Timestamp;
     canBorrowerAddPayment?: boolean;
+    allow_counterparty_edit?: boolean;
 }
 
 export type PaymentLogType = 'INITIAL_CREATION' | 'PAYMENT' | 'NOTE_ADDED' | 'PAYMENT_DECLARATION';

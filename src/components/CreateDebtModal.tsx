@@ -23,17 +23,32 @@ interface CreateDebtModalProps {
         canBorrowerAddPayment?: boolean
     ) => Promise<void>;
     initialPhoneNumber?: string;
+    targetUser?: User | Contact | null;
 }
 
-export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClose, onSubmit, initialPhoneNumber }) => {
+export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClose, onSubmit, initialPhoneNumber, targetUser }) => {
     const { user } = useAuth();
-    const [phoneNumber, setPhoneNumber] = useState(initialPhoneNumber || '');
+
+    // Derived state for initialization
+    const initialName = targetUser
+        ? ('displayName' in targetUser ? targetUser.displayName : targetUser.name)
+        : '';
+
+    const initialPhone = targetUser
+        ? targetUser.phoneNumber
+        : (initialPhoneNumber || '');
+
+    const [phoneNumber, setPhoneNumber] = useState(initialPhone);
     const [amount, setAmount] = useState('');
-    const [borrowerName, setBorrowerName] = useState('');
+    const [borrowerName, setBorrowerName] = useState(initialName);
 
     // Search State
-    const [foundUser, setFoundUser] = useState<User | null>(null);
-    const [foundContact, setFoundContact] = useState<Contact | null>(null);
+    const [foundUser, setFoundUser] = useState<User | null>(
+        targetUser && 'uid' in targetUser ? (targetUser as User) : null
+    );
+    const [foundContact, setFoundContact] = useState<Contact | null>(
+        targetUser && !('uid' in targetUser) ? (targetUser as Contact) : null
+    );
     const [searchResults, setSearchResults] = useState<Contact[]>([]);
 
     const [loading, setLoading] = useState(false);
@@ -51,8 +66,30 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
     const [isInstallment, setIsInstallment] = useState(false);
     const [installmentCount, setInstallmentCount] = useState(1);
 
-    // Search Effect
+    // Reset/Init when opening
     useEffect(() => {
+        if (isOpen) {
+            setPhoneNumber(initialPhone);
+            setBorrowerName(initialName);
+            if (targetUser) {
+                if ('uid' in targetUser) {
+                    setFoundUser(targetUser as User);
+                    setFoundContact(null);
+                } else {
+                    setFoundContact(targetUser as Contact);
+                    setFoundUser(null);
+                }
+            } else {
+                setFoundUser(null);
+                setFoundContact(null);
+            }
+        }
+    }, [isOpen, initialPhoneNumber, targetUser]);
+
+    // Search Effect - Disable if targetUser is set
+    useEffect(() => {
+        if (targetUser) return; // Skip search if locked to a user
+
         const search = async () => {
             if (!user || !phoneNumber || phoneNumber.length < 3) {
                 setSearchResults([]);
@@ -85,14 +122,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
 
         const timeoutId = setTimeout(search, 500);
         return () => clearTimeout(timeoutId);
-    }, [phoneNumber, user]);
-
-    // Update phone number if initialPhoneNumber changes when modal opens
-    useEffect(() => {
-        if (isOpen && initialPhoneNumber) {
-            setPhoneNumber(initialPhoneNumber);
-        }
-    }, [isOpen, initialPhoneNumber]);
+    }, [phoneNumber, user, targetUser]);
 
     if (!isOpen) return null;
 
@@ -259,18 +289,20 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                                         </p>
                                     </div>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setFoundContact(null);
-                                        setFoundUser(null);
-                                        setPhoneNumber('');
-                                        setBorrowerName('');
-                                    }}
-                                    className="p-2 text-text-secondary hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
-                                >
-                                    <X size={20} />
-                                </button>
+                                {!targetUser && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setFoundContact(null);
+                                            setFoundUser(null);
+                                            setPhoneNumber('');
+                                            setBorrowerName('');
+                                        }}
+                                        className="p-2 text-text-secondary hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             /* Search Input */
@@ -500,7 +532,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                         {loading ? 'İşleniyor...' : 'Kaydet'}
                     </button>
                 </form>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 };

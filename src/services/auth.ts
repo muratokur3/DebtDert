@@ -7,7 +7,7 @@ import {
 import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { claimDebts } from './db';
-import { cleanPhoneNumber } from '../utils/phone';
+import { cleanPhone as cleanPhoneNumber } from '../utils/phoneUtils';
 
 const EMAIL_DOMAIN = '@debtapp.local';
 

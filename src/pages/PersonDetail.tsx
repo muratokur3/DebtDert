@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -7,9 +8,10 @@ import { searchUserByPhone, getContacts, updateContact } from '../services/db';
 import { Avatar } from '../components/Avatar';
 import { DebtCard } from '../components/DebtCard';
 import { CreateDebtModal } from '../components/CreateDebtModal';
+import { PhoneInput } from '../components/PhoneInput';
 import { formatCurrency } from '../utils/format';
 import { convertToTRY, fetchRates, type CurrencyRates } from '../services/currency';
-import { cleanPhoneNumber, formatPhoneNumber } from '../utils/phone';
+import { cleanPhone as cleanPhoneNumber, formatPhoneForDisplay as formatPhoneNumber } from '../utils/phoneUtils';
 import clsx from 'clsx';
 
 export const PersonDetail = () => {
@@ -211,10 +213,10 @@ export const PersonDetail = () => {
                             <MessageCircle size={20} />
                         </div>
                         <span className="text-[10px] text-gray-600 dark:text-slate-400 font-medium group-hover:text-blue-600 transition-colors">Mesaj</span>
-                    </a>
+                    </a >
 
                     {/* Call */}
-                    <a
+                    < a
                         href={`tel:${personInfo.phone || ''}`}
                         className="flex flex-col items-center gap-1 min-w-[64px] group cursor-pointer"
                     >
@@ -222,46 +224,50 @@ export const PersonDetail = () => {
                             <Phone size={20} />
                         </div>
                         <span className="text-[10px] text-gray-600 dark:text-slate-400 font-medium group-hover:text-green-600 transition-colors">Ara</span>
-                    </a>
+                    </a >
 
                     {/* Invite (only if not registered) */}
-                    {!isRegisteredUser && (
-                        <a
-                            href={`https://wa.me/${cleanPhoneNumber(personInfo.phone || '')}?text=DebtDert'e gel!`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex flex-col items-center gap-1 min-w-[64px] group cursor-pointer"
-                        >
-                            <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-indigo-600 dark:text-indigo-400 flex items-center justify-center group-hover:bg-indigo-50 dark:group-hover:bg-slate-700 transition-colors shadow-sm">
-                                <Share2 size={20} />
-                            </div>
-                            <span className="text-[10px] text-gray-600 dark:text-slate-400 font-medium group-hover:text-indigo-600 transition-colors">Davet Et</span>
-                        </a>
-                    )}
+                    {
+                        !isRegisteredUser && (
+                            <a
+                                href={`https://wa.me/${cleanPhoneNumber(personInfo.phone || '')}?text=DebtDert'e gel!`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex flex-col items-center gap-1 min-w-[64px] group cursor-pointer"
+                            >
+                                <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-indigo-600 dark:text-indigo-400 flex items-center justify-center group-hover:bg-indigo-50 dark:group-hover:bg-slate-700 transition-colors shadow-sm">
+                                    <Share2 size={20} />
+                                </div>
+                                <span className="text-[10px] text-gray-600 dark:text-slate-400 font-medium group-hover:text-indigo-600 transition-colors">Davet Et</span>
+                            </a>
+                        )
+                    }
 
 
                     {/* Edit - Active if Contact Found */}
-                    {contactId ? (
-                        <button
-                            onClick={() => setShowEditModal(true)}
-                            className="flex flex-col items-center gap-1 min-w-[64px] group"
-                        >
-                            <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-400 flex items-center justify-center group-hover:bg-gray-100 dark:group-hover:bg-slate-700 transition-colors shadow-sm">
-                                <Edit2 size={20} />
-                            </div>
-                            <span className="text-[10px] text-gray-600 dark:text-slate-400 font-medium group-hover:text-gray-900 transition-colors">Düzenle</span>
-                        </button>
-                    ) : (
-                        <button
-                            onClick={() => alert("Bu kişi rehberinizde kayıtlı değil.")}
-                            className="flex flex-col items-center gap-1 min-w-[64px] group opacity-50"
-                        >
-                            <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-400 flex items-center justify-center cursor-not-allowed">
-                                <Edit2 size={20} />
-                            </div>
-                            <span className="text-[10px] text-gray-400 font-medium">Düzenle</span>
-                        </button>
-                    )}
+                    {
+                        contactId ? (
+                            <button
+                                onClick={() => setShowEditModal(true)}
+                                className="flex flex-col items-center gap-1 min-w-[64px] group"
+                            >
+                                <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-400 flex items-center justify-center group-hover:bg-gray-100 dark:group-hover:bg-slate-700 transition-colors shadow-sm">
+                                    <Edit2 size={20} />
+                                </div>
+                                <span className="text-[10px] text-gray-600 dark:text-slate-400 font-medium group-hover:text-gray-900 transition-colors">Düzenle</span>
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => alert("Bu kişi rehberinizde kayıtlı değil.")}
+                                className="flex flex-col items-center gap-1 min-w-[64px] group opacity-50"
+                            >
+                                <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-400 flex items-center justify-center cursor-not-allowed">
+                                    <Edit2 size={20} />
+                                </div>
+                                <span className="text-[10px] text-gray-400 font-medium">Düzenle</span>
+                            </button>
+                        )
+                    }
 
                     {/* Delete */}
                     <button
@@ -274,8 +280,8 @@ export const PersonDetail = () => {
                         <span className="text-[10px] text-gray-600 dark:text-slate-400 font-medium group-hover:text-red-600 transition-colors">Sil</span>
                     </button>
 
-                </div>
-            </header>
+                </div >
+            </header >
 
             <main className="max-w-2xl mx-auto p-4 space-y-6">
                 {/* Summary Card */}
@@ -366,58 +372,61 @@ export const PersonDetail = () => {
                 }}
             />
             {/* Edit Modal */}
-            {showEditModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-surface rounded-2xl w-full max-w-sm p-6 shadow-xl animate-in fade-in zoom-in duration-200 border border-slate-700">
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-xl font-bold text-text-primary">
-                                Kişiyi Düzenle
-                            </h2>
-                            <button onClick={() => setShowEditModal(false)} className="text-text-secondary hover:text-text-primary">
-                                <X size={24} />
-                            </button>
+            {
+                showEditModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <div className="bg-surface rounded-2xl w-full max-w-sm p-6 shadow-xl animate-in fade-in zoom-in duration-200 border border-slate-700">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-xl font-bold text-text-primary">
+                                    Kişiyi Düzenle
+                                </h2>
+                                <button onClick={() => setShowEditModal(false)} className="text-text-secondary hover:text-text-primary">
+                                    <X size={24} />
+                                </button>
+                            </div>
+                            <form onSubmit={handleEditSubmit} className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">İsim Soyisim</label>
+                                    <input
+                                        type="text"
+                                        value={editName}
+                                        onChange={(e) => setEditName(e.target.value)}
+                                        className="w-full px-4 py-2 rounded-lg border border-slate-700 bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                                        Telefon Numarası
+                                    </label>
+                                    <PhoneInput
+                                        value={editPhone}
+                                        onChange={setEditPhone}
+                                        required
+                                        placeholder="555 123 45 67"
+                                    />
+                                </div>
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowEditModal(false)}
+                                        className="flex-1 py-2 text-text-secondary hover:bg-background rounded-lg font-medium transition-colors"
+                                    >
+                                        İptal
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={submittingEdit}
+                                        className="flex-1 py-2 bg-primary text-white rounded-lg font-medium hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                                    >
+                                        {submittingEdit ? 'Kaydediliyor...' : 'Kaydet'}
+                                    </button>
+                                </div>
+                            </form>
                         </div>
-                        <form onSubmit={handleEditSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary mb-1">İsim Soyisim</label>
-                                <input
-                                    type="text"
-                                    value={editName}
-                                    onChange={(e) => setEditName(e.target.value)}
-                                    className="w-full px-4 py-2 rounded-lg border border-slate-700 bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary mb-1">Telefon Numarası</label>
-                                <input
-                                    type="tel"
-                                    value={editPhone}
-                                    onChange={(e) => setEditPhone(e.target.value.replace(/\D/g, ''))}
-                                    className="w-full px-4 py-2 rounded-lg border border-slate-700 bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none"
-                                    required
-                                />
-                            </div>
-                            <div className="flex gap-3 pt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowEditModal(false)}
-                                    className="flex-1 py-2 text-text-secondary hover:bg-background rounded-lg font-medium transition-colors"
-                                >
-                                    İptal
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={submittingEdit}
-                                    className="flex-1 py-2 bg-primary text-white rounded-lg font-medium hover:bg-blue-600 disabled:opacity-50 transition-colors"
-                                >
-                                    {submittingEdit ? 'Kaydediliyor...' : 'Kaydet'}
-                                </button>
-                            </div>
-                        </form>
                     </div>
-                </div>
-            )}
+                )
+            }
         </div >
     );
 };

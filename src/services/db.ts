@@ -19,7 +19,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Debt, DebtStatus, PaymentLog, User, Contact, Installment } from '../types';
-import { cleanPhoneNumber } from '../utils/phone';
+import { cleanPhone as cleanPhoneNumber } from '../utils/phoneUtils';
 
 export const createDebt = async (
     currentUserId: string,
@@ -46,7 +46,9 @@ export const createDebt = async (
         const cleanTarget = cleanPhoneNumber(targetUserId);
 
         // If targetUserId looks like a phone number (not a long UID)
-        if (targetUserId.length <= 15) {
+        // Adjust check: UIDs are usually 28 chars. Standard E.164 is 13 chars max usually.
+        // cleanTarget will be E.164 if it's a phone.
+        if (targetUserId.length <= 15 || targetUserId.startsWith('+')) {
             const existingUser = await searchUserByPhone(cleanTarget);
             if (existingUser) {
                 finalTargetId = existingUser.uid;
@@ -344,8 +346,14 @@ export const deleteContact = async (userId: string, contactId: string) => {
 
 export const updateContact = async (userId: string, contactId: string, data: Partial<Contact>) => {
     try {
+        // If updating phone, make sure to clean it
+        const updateData = { ...data };
+        if (updateData.phoneNumber) {
+            updateData.phoneNumber = cleanPhoneNumber(updateData.phoneNumber);
+        }
+
         const contactRef = doc(db, 'users', userId, 'contacts', contactId);
-        await updateDoc(contactRef, data);
+        await updateDoc(contactRef, updateData);
     } catch (error) {
         console.error("Error updating contact:", error);
         throw error;
@@ -356,6 +364,8 @@ export const searchContacts = async (userId: string, searchQuery: string) => {
     try {
         const contacts = await getContacts(userId);
         const lowerQuery = searchQuery.toLowerCase();
+        // search logic should probably be smarter with phone cleaning too if possible,
+        // but simple includes check works for names. For phones, we might want to check against dirty & clean.
         return contacts.filter(c =>
             c.name.toLowerCase().includes(lowerQuery) ||
             c.phoneNumber.includes(searchQuery)

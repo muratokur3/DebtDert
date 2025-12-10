@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { getContacts, addContact, deleteContact, updateContact } from '../services/db';
 import type { Contact } from '../types';
-import { Plus, Search, Trash2, ArrowLeft, Edit2, MessageCircle, Phone, Share2, Wallet } from 'lucide-react';
+import { Plus, Search, Trash2, ArrowLeft, Edit2, MessageCircle, Phone, Share2, Wallet, X } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { SwipeableItem } from '../components/SwipeableItem';
 import { Avatar } from '../components/Avatar';
-import { cleanPhoneNumber, formatPhoneNumber } from '../utils/phone';
+import { cleanPhone as cleanPhoneNumber, formatPhoneForDisplay as formatPhoneNumber } from '../utils/phoneUtils';
 import { CreateDebtModal } from '../components/CreateDebtModal';
+import { PhoneInput } from '../components/PhoneInput';
 import { createDebt } from '../services/db';
 
 export const Contacts = () => {
@@ -244,47 +245,52 @@ export const Contacts = () => {
             {
                 showModal && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                        <div className="bg-surface rounded-2xl w-full max-w-sm p-6 shadow-xl animate-in fade-in zoom-in duration-200 border border-slate-700">
-                            <h2 className="text-xl font-bold text-text-primary mb-4">
+                        <div className="bg-surface p-6 rounded-2xl w-full max-w-md relative">
+                            <button
+                                onClick={() => setShowModal(false)}
+                                className="absolute right-4 top-4 p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+
+                            <h2 className="text-xl font-bold mb-6 text-text-primary">
                                 {editingContact ? 'Kişiyi Düzenle' : 'Yeni Kişi Ekle'}
                             </h2>
+
                             <form onSubmit={handleSubmit} className="space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-text-secondary mb-1">İsim Soyisim</label>
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                                        Ad Soyad
+                                    </label>
                                     <input
                                         type="text"
                                         value={name}
                                         onChange={(e) => setName(e.target.value)}
-                                        className="w-full px-4 py-2 rounded-lg border border-slate-700 bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none"
+                                        className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all"
+                                        placeholder="Ad Soyad"
                                         required
                                     />
                                 </div>
+
                                 <div>
-                                    <label className="block text-sm font-medium text-text-secondary mb-1">Telefon Numarası</label>
-                                    <input
-                                        type="tel"
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">
+                                        Telefon Numarası
+                                    </label>
+                                    <PhoneInput
                                         value={phone}
-                                        onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                                        className="w-full px-4 py-2 rounded-lg border border-slate-700 bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none"
+                                        onChange={setPhone}
                                         required
+                                        placeholder="555 123 45 67"
                                     />
                                 </div>
-                                <div className="flex gap-3 pt-2">
-                                    <button
-                                        type="button"
-                                        onClick={closeModal}
-                                        className="flex-1 py-2 text-text-secondary hover:bg-background rounded-lg font-medium transition-colors"
-                                    >
-                                        İptal
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={submitting}
-                                        className="flex-1 py-2 bg-primary text-white rounded-lg font-medium hover:bg-blue-600 disabled:opacity-50 transition-colors"
-                                    >
-                                        {submitting ? 'Kaydediliyor...' : 'Kaydet'}
-                                    </button>
-                                </div>
+
+                                <button
+                                    type="submit"
+                                    disabled={submitting}
+                                    className="w-full bg-primary text-white py-3 rounded-xl font-semibold hover:bg-blue-600 active:scale-95 transition-all mt-2"
+                                >
+                                    {submitting ? 'Kaydediliyor...' : 'Kaydet'}
+                                </button>
                             </form>
                         </div>
                     </div>

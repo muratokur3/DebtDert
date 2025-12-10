@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 
 import { loginUser, ensureUserDocument } from '../services/auth';
 import { useNavigate, Link } from 'react-router-dom';
-import { Phone, Lock, MessageSquare, Loader2, ArrowLeft } from 'lucide-react';
+import { Lock, MessageSquare, Loader2, ArrowLeft } from 'lucide-react';
 import { auth } from '../services/firebase';
 import { RecaptchaVerifier, signInWithPhoneNumber, type ConfirmationResult } from 'firebase/auth';
+import { PhoneInput } from '../components/PhoneInput';
 
 declare global {
     interface Window {
@@ -12,20 +13,11 @@ declare global {
     }
 }
 
-const COUNTRY_CODES = [
-    { code: '+90', label: '🇹🇷 +90' },
-    { code: '+1', label: '🇺🇸 +1' },
-    { code: '+44', label: '🇬🇧 +44' },
-    { code: '+49', label: '🇩🇪 +49' },
-    { code: '+33', label: '🇫🇷 +33' },
-    { code: '+31', label: '🇳🇱 +31' },
-    { code: '+994', label: '🇦🇿 +994' },
-    { code: '+7', label: '🇷🇺 +7' },
-];
+
 
 export const Login = () => {
     const [mode, setMode] = useState<'PASSWORD' | 'SMS'>('PASSWORD');
-    const [countryCode, setCountryCode] = useState('+90');
+    // const [countryCode, setCountryCode] = useState('+90'); // REMOVED
     const [phoneNumber, setPhoneNumber] = useState('');
     const [password, setPassword] = useState('');
     const [otp, setOtp] = useState('');
@@ -75,7 +67,8 @@ export const Login = () => {
         setLoading(true);
 
         // Combine Country Code + Phone
-        const fullPhoneNumber = `${countryCode}${phoneNumber.replace(/\D/g, '')}`;
+        // PhoneInput now returns E.164 full number
+        const fullPhoneNumber = phoneNumber;
 
         try {
             if (!window.recaptchaVerifier) throw new Error("Recaptcha not initialized");
@@ -159,19 +152,12 @@ export const Login = () => {
                     <form onSubmit={handlePasswordLogin} className="space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-text-secondary mb-1">Telefon Numarası</label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <Phone size={18} className="text-text-secondary" />
-                                </div>
-                                <input
-                                    type="tel"
-                                    value={phoneNumber}
-                                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
-                                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all"
-                                    placeholder="5551234567"
-                                    required
-                                />
-                            </div>
+                            <PhoneInput
+                                value={phoneNumber}
+                                onChange={setPhoneNumber}
+                                required
+                                placeholder="555 123 45 67"
+                            />
                         </div>
 
                         <div>
@@ -207,34 +193,17 @@ export const Login = () => {
                     <form onSubmit={handleSendOtp} className="space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-text-secondary mb-1">Telefon Numarası</label>
-                            <div className="flex gap-2">
-                                <select
-                                    value={countryCode}
-                                    onChange={(e) => setCountryCode(e.target.value)}
-                                    className="px-2 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all appearance-none cursor-pointer min-w-[80px]"
-                                >
-                                    {COUNTRY_CODES.map(c => (
-                                        <option key={c.code} value={c.code}>{c.label}</option>
-                                    ))}
-                                </select>
-                                <div className="relative flex-1">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Phone size={18} className="text-text-secondary" />
-                                    </div>
-                                    <input
-                                        type="tel"
-                                        value={phoneNumber}
-                                        onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
-                                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all"
-                                        placeholder="5551234567"
-                                        required
-                                    />
-                                </div>
-                            </div>
+                            <PhoneInput
+                                value={phoneNumber}
+                                onChange={setPhoneNumber}
+                                required
+                                placeholder="555 123 45 67"
+                            />
                             <p className="text-xs text-text-secondary mt-1 ml-1">SMS doğrulama kodu gönderilecektir.</p>
                         </div>
 
                         <div ref={recaptchaWrapperRef} className="flex justify-center my-2"></div>
+
 
                         <button
                             type="submit"

@@ -20,7 +20,8 @@ interface CreateDebtModalProps {
         note?: string,
         dueDate?: Date,
         installments?: Installment[],
-        canBorrowerAddPayment?: boolean
+        canBorrowerAddPayment?: boolean,
+        requestApproval?: boolean
     ) => Promise<void>;
     initialPhoneNumber?: string;
     targetUser?: User | Contact | null;
@@ -61,6 +62,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
     const [dueDate, setDueDate] = useState('');
     const [showDetails, setShowDetails] = useState(false);
     const [canBorrowerAddPayment, setCanBorrowerAddPayment] = useState(false);
+    const [requestApproval, setRequestApproval] = useState(false);
 
     // Installment State
     const [isInstallment, setIsInstallment] = useState(false);
@@ -79,12 +81,21 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                     setFoundContact(targetUser as Contact);
                     setFoundUser(null);
                 }
-            } else {
-                setFoundUser(null);
                 setFoundContact(null);
             }
+            // Initialize requestApproval to false (user can manually check if needed)
+            // Previous behavior: Default was strictly logic-based.
+            // We default to false so Auto-Approve works by default unless overridden.
+            setRequestApproval(false);
+
+            // Initialize canBorrowerAddPayment from preference
+            if (user?.preferences?.defaultAllowPaymentAddition) {
+                setCanBorrowerAddPayment(true);
+            } else {
+                setCanBorrowerAddPayment(false);
+            }
         }
-    }, [isOpen, initialPhoneNumber, targetUser]);
+    }, [isOpen, initialPhoneNumber, targetUser, user]);
 
     // Search Effect - Disable if targetUser is set
     useEffect(() => {
@@ -197,7 +208,8 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                 note,
                 dueDate ? new Date(dueDate) : undefined,
                 generatedInstallments,
-                canBorrowerAddPayment
+                canBorrowerAddPayment,
+                requestApproval
             );
 
             // 2. Auto-add to Contacts if not already a contact
@@ -223,6 +235,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
             setIsInstallment(false);
             setInstallmentCount(1);
             setCanBorrowerAddPayment(false);
+            setRequestApproval(true);
         } catch (error) {
             console.error(error);
         } finally {
@@ -477,6 +490,17 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                             {canBorrowerAddPayment && <div className="w-2.5 h-2.5 bg-white rounded-sm" />}
                         </div>
                         <span className="text-sm text-text-primary select-none">Karşı taraf ödeme ekleyebilsin</span>
+                    </div>
+
+                    {/* Request Approval Checkbox */}
+                    <div className="flex items-center gap-2 p-3 bg-background rounded-xl border border-slate-700 cursor-pointer" onClick={() => setRequestApproval(!requestApproval)}>
+                        <div className={clsx(
+                            "w-5 h-5 rounded border flex items-center justify-center transition-colors",
+                            requestApproval ? "bg-primary border-primary" : "border-slate-500"
+                        )}>
+                            {requestApproval && <div className="w-2.5 h-2.5 bg-white rounded-sm" />}
+                        </div>
+                        <span className="text-sm text-text-primary select-none">Karşı taraftan onay iste</span>
                     </div>
 
                     {/* Expandable Details */}

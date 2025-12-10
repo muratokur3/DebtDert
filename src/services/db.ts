@@ -31,7 +31,8 @@ export const createDebt = async (
     note?: string,
     dueDate?: Date,
     installments?: Installment[],
-    canBorrowerAddPayment?: boolean
+    canBorrowerAddPayment?: boolean,
+    requestApproval?: boolean
 ) => {
     try {
         const isLending = type === 'LENDING';
@@ -56,6 +57,33 @@ export const createDebt = async (
         const borrowerId = isLending ? finalTargetId : currentUserId;
         const borrowerName = isLending ? targetUserName : currentUserName;
 
+        // CHECK PREFERENCES: Check if the counterparty has auto-approve enabled
+        // The counterparty is the one who did NOT create the debt. 
+        // If I am lending (I create), counterparty is borrower.
+        // If I am borrowing (I create), counterparty is lender.
+        const counterpartyId = isLending ? borrowerId : lenderId;
+
+        let initialStatus: DebtStatus = 'PENDING';
+
+        // Only check preferences if counterparty is a real user (has a UID length > 15 usually implies uid, but here we know finalTargetId logic)
+        // If finalTargetId is a phone number, they are not a system user yet (or we handled it above).
+        // logic: finalTargetId is definitely a UID if we found a user.
+
+        if (counterpartyId.length > 20) { // Simple check for UID vs Phone
+            const counterpartyUser = await getDoc(doc(db, 'users', counterpartyId));
+            if (counterpartyUser.exists()) {
+                const userData = counterpartyUser.data() as User;
+                if (userData.preferences?.autoApproveDebt) {
+                    initialStatus = 'ACTIVE'; // active = approved
+                }
+            }
+        }
+
+        // If explicitly requesting approval, force PENDING
+        if (requestApproval) {
+            initialStatus = 'PENDING';
+        }
+
         const debtData = {
             lenderId,
             lenderName,
@@ -64,7 +92,7 @@ export const createDebt = async (
             originalAmount: amount,
             remainingAmount: amount,
             currency,
-            status: 'PENDING' as DebtStatus,
+            status: initialStatus,
             participants: [lenderId, borrowerId],
             createdAt: serverTimestamp(),
             createdBy: currentUserId,
@@ -397,11 +425,22 @@ export const getUsersStatus = async (userIds: string[]) => {
                     displayName: data.displayName
                 };
             }
+
         });
         return statusMap;
     } catch (error) {
         console.error("Error getting users status:", error);
         return {};
+    }
+};
+
+export const updateUserPreferences = async (userId: string, preferences: User['preferences']) => {
+    try {
+        const userRef = doc(db, 'users', userId);
+        await updateDoc(userRef, { preferences });
+    } catch (error) {
+        console.error("Error updating user preferences:", error);
+        throw error;
     }
 };
 

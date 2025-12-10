@@ -102,7 +102,8 @@ export const QuickDial = () => {
         note?: string,
         dueDate?: Date,
         installments?: any[],
-        canBorrowerAddPayment?: boolean
+        canBorrowerAddPayment?: boolean,
+        requestApproval?: boolean
     ) => {
         if (!user) return;
         await createDebt(
@@ -116,7 +117,8 @@ export const QuickDial = () => {
             note,
             dueDate,
             installments,
-            canBorrowerAddPayment
+            canBorrowerAddPayment,
+            requestApproval
         );
         setShowCreateModal(false);
         setPhoneNumber('');

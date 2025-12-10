@@ -66,7 +66,8 @@ export const Dashboard = () => {
         note?: string,
         dueDate?: Date,
         installments?: Installment[],
-        canBorrowerAddPayment?: boolean
+        canBorrowerAddPayment?: boolean,
+        requestApproval?: boolean
     ) => {
         if (!user) return;
         try {
@@ -82,7 +83,8 @@ export const Dashboard = () => {
                 note,
                 dueDate,
                 installments,
-                canBorrowerAddPayment
+                canBorrowerAddPayment,
+                requestApproval
             );
         } catch (error) {
             console.error(error);

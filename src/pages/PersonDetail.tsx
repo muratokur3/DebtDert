@@ -190,8 +190,34 @@ export const PersonDetail = () => {
                 isOpen={showCreateModal}
                 onClose={() => setShowCreateModal(false)}
                 initialPhoneNumber={id} // Pre-fill with this person's ID/Phone
-                onSubmit={async () => {
-                    // Logic handled by modal, it refreshes list automatically via subscription
+                targetUser={
+                    // Pass full object if possible, but we might only have ID.
+                    // If we have personDebts, we can try to find the full object or just pass ID.
+                    // For now, passing initialPhoneNumber is enough, modal handles search if needed, but we want to lock it.
+                    // Actually we can pass undefined targetUser and let initialPhoneNumber do work, OR pass a dummy object.
+                    // Let's just implement the submit handler.
+                    undefined
+                }
+                onSubmit={async (borrowerId, borrowerName, amount, type, currency, note, dueDate, installments, canBorrowerAddPayment, requestApproval) => {
+                    if (!user) return;
+                    // For PersonDetail, we are already focused on a person.
+                    // The Modal handles the UI but we must call createDebt.
+                    // Note: borrowerId coming from Modal might be the phone number or UID.
+                    await import('../services/db').then(({ createDebt }) => createDebt(
+                        user.uid,
+                        user.displayName || 'Bilinmeyen',
+                        borrowerId,
+                        borrowerName,
+                        amount,
+                        type,
+                        currency,
+                        note,
+                        dueDate,
+                        installments,
+                        canBorrowerAddPayment,
+                        requestApproval
+                    ));
+                    setShowCreateModal(false);
                 }}
             />
         </div>

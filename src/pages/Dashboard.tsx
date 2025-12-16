@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useDebts } from '../hooks/useDebts';
 import { useAuth } from '../hooks/useAuth';
-import { useContacts } from '../hooks/useContacts';
 import { useContactName } from '../hooks/useContactName';
 import { ContactRow } from '../components/ContactRow';
 import { NotificationsModal } from '../components/NotificationsModal';
@@ -43,7 +42,7 @@ export const Dashboard = () => {
     const [showFilters, setShowFilters] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
     const { notifications } = useNotifications();
-    const { isContact } = useContacts();
+    // const { isContact } = useContacts(); // Unused
     const { resolveName } = useContactName();
     const [editingDebt, setEditingDebt] = useState<Debt | null>(null);
 
@@ -156,8 +155,9 @@ export const Dashboard = () => {
         });
 
         // 2. Convert Map to List & Filter
-        let summaries: ContactSummary[] = Array.from(contactMap.entries())
-            .map(([id, data]) => ({
+        const mapEntries = Array.from(contactMap.entries());
+        let summaries = mapEntries.map(([id, data]) => {
+            return {
                 id,
                 name: data.name,
                 netBalance: data.balance,
@@ -165,9 +165,9 @@ export const Dashboard = () => {
                 lastActivity: data.lastActivity,
                 lastActionSnippet: data.lastSnippet,
                 status: data.source === 'contact' ? 'contact' : (data.source === 'user' ? 'system' : 'none'),
-                // photoURL: undefined // We don't have it yet, but structure supports it
-            }))
-            .filter(c => Math.abs(c.netBalance) > 0.01);
+                // photoURL: undefined 
+            } as ContactSummary;
+        }).filter(c => Math.abs(c.netBalance) > 0.01);
 
         // 3. Filters (Time & Type)
         const now = new Date();

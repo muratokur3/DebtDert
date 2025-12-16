@@ -9,7 +9,7 @@ import {
     type ConfirmationResult,
     type User
 } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { claimLegacyDebts } from './db';
 import { cleanPhone as cleanPhoneNumber } from '../utils/phoneUtils';
@@ -109,21 +109,54 @@ export const ensureUserDocument = async (user: User) => {
     try {
         const userDocRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userDocRef);
+        const phone = user.phoneNumber || '';
+        const clean = cleanPhoneNumber(phone);
 
         if (!userDoc.exists()) {
-            // It's a new SMS-only user (or first time logging in this way)
-            const phone = user.phoneNumber || '';
-
+            // New User Initialization
             await setDoc(userDocRef, {
                 uid: user.uid,
-                phoneNumber: phone,
+                phoneNumbers: clean ? [clean] : [],
+                primaryPhoneNumber: clean,
                 displayName: user.displayName || 'Kullanıcı',
-                authEmail: user.email || null, // Might be null for SMS only
+                authEmail: user.email || null,
                 createdAt: serverTimestamp()
             });
 
-            if (phone) {
-                await claimLegacyDebts(user.uid, phone);
+            // Register in Registry
+            if (clean) {
+                const regRef = doc(db, 'phone_registry', clean);
+                await setDoc(regRef, {
+                    uid: user.uid,
+                    verifiedAt: serverTimestamp()
+                });
+
+                await claimLegacyDebts(user.uid, clean);
+            }
+        } else {
+            // Existing User Maintenance
+            // Ensure they are in Registry (Self-Healing)
+            const userData = userDoc.data();
+            const phones = userData.phoneNumbers || (userData.phoneNumber ? [userData.phoneNumber] : []);
+
+            // If schema migration needed
+            if (!userData.phoneNumbers && phones.length > 0) {
+                await updateDoc(userDocRef, {
+                    phoneNumbers: phones,
+                    primaryPhoneNumber: phones[0]
+                });
+            }
+
+            // Register all owned phones
+            for (const p of phones) {
+                const regRef = doc(db, 'phone_registry', p);
+                const regDoc = await getDoc(regRef);
+                if (!regDoc.exists()) {
+                    await setDoc(regRef, {
+                        uid: user.uid,
+                        verifiedAt: serverTimestamp()
+                    });
+                }
             }
         }
     } catch (error) {

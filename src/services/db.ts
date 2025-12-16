@@ -41,17 +41,20 @@ export const createDebt = async (
 
         // ... (existing logic for target determination) ...
         // Determine if targetUserId is a phone number or UID
-        // If it's a phone number (length <= 15 and digits), try to find a user
         let finalTargetId = targetUserId;
         const cleanTarget = cleanPhoneNumber(targetUserId);
 
         // If targetUserId looks like a phone number (not a long UID)
-        // Adjust check: UIDs are usually 28 chars. Standard E.164 is 13 chars max usually.
         // cleanTarget will be E.164 if it's a phone.
         if (targetUserId.length <= 15 || targetUserId.startsWith('+')) {
-            const existingUser = await searchUserByPhone(cleanTarget);
-            if (existingUser) {
-                finalTargetId = existingUser.uid;
+            // NEW: Multi-Phone Registry Lookup
+            const { resolvePhoneToUid } = await import('./identity'); // Dynamic import to avoid circular dependency
+            const resolvedUid = await resolvePhoneToUid(cleanTarget);
+
+            if (resolvedUid) {
+                finalTargetId = resolvedUid;
+                // Fetch basic user info if needed for display? 
+                // DebtCard will handle display resolution. We just need the ID.
             } else {
                 finalTargetId = cleanTarget; // Use cleaned phone as ID if no user found
             }

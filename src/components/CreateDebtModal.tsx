@@ -3,7 +3,7 @@ import { X, Search, ChevronDown, ChevronUp, Book } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { SelectedUserCard } from './SelectedUserCard'; // Import moved to top
 
-import { searchUserByPhone, searchContacts, addContact } from '../services/db';
+import { searchUserByPhone, searchContacts } from '../services/db';
 import { formatCurrency } from '../utils/format';
 import type { User, Contact, Installment } from '../types';
 import { useAuth } from '../hooks/useAuth';
@@ -44,7 +44,9 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
     // ... [rest unchanged]
 
     const initialPhone = targetUser
-        ? targetUser.phoneNumber
+        ? ('uid' in targetUser
+            ? (targetUser.primaryPhoneNumber || targetUser.phoneNumbers?.[0] || targetUser.phoneNumber || '')
+            : targetUser.phoneNumber)
         : (initialPhoneNumber || '');
 
     const [phoneNumber, setPhoneNumber] = useState(initialPhone);
@@ -164,7 +166,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
 
     const handleSelectUser = (sysUser: User) => {
         setFoundUser(sysUser);
-        setPhoneNumber(sysUser.phoneNumber);
+        setPhoneNumber(sysUser.primaryPhoneNumber || sysUser.phoneNumbers?.[0] || sysUser.phoneNumber || '');
         setBorrowerName(sysUser.displayName || '');
         setSearchResults([]);
         setFoundContact(null);
@@ -184,7 +186,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
         }
 
         // Determine final ID and Name
-        let finalBorrowerId = phoneNumber;
+        let finalBorrowerId: string = phoneNumber || '';
         let finalBorrowerName = borrowerName;
 
         if (foundContact) {

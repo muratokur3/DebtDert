@@ -240,12 +240,8 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                 numDownPayment // Pass Initial Payment
             );
 
-            // 2. Auto-add to Contacts if not already a contact
-            if (!foundContact) {
-                // Check if we should link to a system user
-                const linkedId = foundUser ? foundUser.uid : undefined;
-                await addContact(user.uid, finalBorrowerName, phoneNumber, linkedId);
-            }
+            // 2. Auto-add to Contacts is now handled inside createDebt service globally.
+            // Redundant call removed to prevent duplicates.
 
             onClose();
             // Reset form

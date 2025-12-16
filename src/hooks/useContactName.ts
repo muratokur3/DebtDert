@@ -15,8 +15,9 @@ export const useContactName = () => {
         // Identifier could be a Phone or a UID. 
         // Contacts are stored with 'phoneNumber' (cleaned) and 'linkedUserId'.
 
+        const cleanIdentifier = identifier.replace(/\s/g, ''); // Simple cleanup for comparison if not already clean
         const contactMatch = contacts.find(c =>
-            c.phoneNumber === identifier || c.linkedUserId === identifier
+            c.phoneNumber === identifier || c.phoneNumber === cleanIdentifier || c.linkedUserId === identifier
         );
 
         if (contactMatch) {
@@ -27,19 +28,13 @@ export const useContactName = () => {
             };
         }
 
-        // 2. Check fallbackName (This usually comes from the Transaction 'targetUserName' or 'lenderName' snapshot)
-        // In this app, we store 'lenderName'/'borrowerName' on the Debt record at creation.
-        // If that name was set by the User (e.g. from their profile), use it? 
-        // OR does prompt say "Check Users table. Is there a display_name?"
-        // Since we don't fetch *ALL* users to client, we rely on the name stored in the Debt record 
-        // OR we fetch the user profile if we have a UID.
-        // For lists, likely we rely on the snapshot name IF we don't have a contact.
-
-        if (fallbackName && identifier.length > 15) {
-            // If it's a UID and we have a name (likely from Auth profile at creation), use it.
+        // 2. Check fallbackName (Snapshot Name from Debt/User)
+        // If we have a fallback name that is NOT just the phone number itself, use it.
+        // This fixes the issue where "Ahmet" is passed as fallback, but the function sees a phone ID and returns formatted phone.
+        if (fallbackName && fallbackName !== identifier && fallbackName.replace(/\D/g, '').length !== identifier.replace(/\D/g, '').length) {
             return {
                 displayName: fallbackName,
-                source: 'user',
+                source: 'user', // Technically 'snapshot' or 'user' provided
                 originalName: fallbackName
             };
         }

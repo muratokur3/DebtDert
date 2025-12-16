@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useDebts } from '../hooks/useDebts';
+import { useContactName } from '../hooks/useContactName';
 import { ArrowLeft, Plus, Phone, MessageCircle, Trash2, Edit2, Share2, X, MoreVertical } from 'lucide-react';
 import { searchUserByPhone, getContacts, updateContact } from '../services/db';
 import { Avatar } from '../components/Avatar';
@@ -24,6 +25,7 @@ export const PersonDetail = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const { allDebts: debts, loading } = useDebts();
+    const { resolveName } = useContactName(); // Added this
     const { showAlert, showConfirm } = useModal();
     const [rates, setRates] = useState<CurrencyRates | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -158,36 +160,38 @@ export const PersonDetail = () => {
         });
     }, [debts, id, user]);
 
-    // Get Person Info from the first debt found (or passed state if we had it)
+    // Get Person Info using standard hook
     const personInfo = useMemo(() => {
-        // If we found a contact in the database, use that info
-        if (contactId && editName) {
-            return {
-                name: editName,
-                phone: editPhone || (id || '')
+        // Determine fallback name and phone from debts if available
+        let fallbackName = '';
+        let phone = id || '';
+
+        if (personDebts.length > 0) {
+            const first = personDebts[0];
+            const isLender = first.lenderId === user?.uid;
+            fallbackName = isLender ? first.borrowerName : first.lenderName;
+            const otherId = isLender ? first.borrowerId : first.lenderId;
+            // If the ID param is a UID, we prefer the phone from the debt record if it looks like a phone
+            if (id && id.length > 20 && otherId.length <= 15) {
+                phone = otherId;
             }
         }
 
-        if (personDebts.length === 0) {
-            // If ID looks like a phone, format it
-            const name = id && id.length <= 15 ? formatPhoneNumber(id) : 'Kişi';
-            return { name, phone: id || '' };
+        // Local override if we just edited (optimistic UI)
+        if (contactId && editName) {
+            return {
+                name: editName,
+                phone: editPhone || phone
+            };
         }
-        const first = personDebts[0];
-        const isLender = first.lenderId === user?.uid;
-        let name = isLender ? first.borrowerName : first.lenderName;
-        const phone = isLender ? first.borrowerId : first.lenderId;
 
-        // If name is raw phone, format it
-        if (name.replace(/\D/g, '').length >= 10 && !name.includes(' ')) {
-            name = formatPhoneNumber(name);
-        }
+        const { displayName } = resolveName(id || '', fallbackName);
 
         return {
-            name,
-            phone: phone.length > 20 ? '' : phone // Only show phone if it's not a UID (approx check)
+            name: displayName,
+            phone: phone.length > 20 ? '' : phone
         };
-    }, [personDebts, user, id, contactId, editName, editPhone]);
+    }, [personDebts, user, id, contactId, editName, editPhone, resolveName]);
 
     // Calculate Totals with this person
     const totals = useMemo(() => {

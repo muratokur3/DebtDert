@@ -150,6 +150,33 @@ export const createDebt = async (
 
         await batch.commit();
 
+        // Auto-Contact Creation Logic
+        // If I am the Creator (always true here as currentUserId), and the counterparty is NOT me
+        if (currentUserId) {
+            const counterpartyId = isLending ? borrowerId : lenderId;
+            const counterpartyName = isLending ? borrowerName : lenderName;
+
+            // If counterparty is a phone number or a user that might not be in my contacts
+            // We blindly try to add/update contact. addContact handles duplicates nicely.
+            // We use the cleaned phone for the ID check if possible.
+            let contactPhone = '';
+            if (counterpartyId.length <= 15) {
+                contactPhone = counterpartyId;
+            } else {
+                // If it's a UID, we might need the phone. 
+                // In this flow, check if we started with a phone target.
+                if (cleanTarget && cleanTarget.length <= 15) {
+                    contactPhone = cleanTarget;
+                }
+            }
+
+            if (contactPhone) {
+                // Fire and forget contact addition to ensure names show up in Dashboard
+                addContact(currentUserId, counterpartyName, contactPhone, counterpartyId.length > 20 ? counterpartyId : undefined)
+                    .catch(err => console.error("Auto-add contact failed", err));
+            }
+        }
+
         return docRef.id;
     } catch (error) {
         throw error;
@@ -285,9 +312,30 @@ export const addContact = async (currentUserId: string, name: string, phoneNumbe
         const cleanPhone = cleanPhoneNumber(phoneNumber);
         const contactsRef = collection(db, 'users', currentUserId, 'contacts');
 
-        // Check if phone number already exists
-        const q = query(contactsRef, where('phoneNumber', '==', cleanPhone));
-        const querySnapshot = await getDocs(q);
+        // Check if phone number already exists (Try strict clean first)
+        let q = query(contactsRef, where('phoneNumber', '==', cleanPhone));
+        let querySnapshot = await getDocs(q);
+
+        // Double check: If strict failed, maybe stored as non-standard? 
+        // Example: DB has "0555..." but clean is "+90555..."
+        // Or DB has "+90 555" (spaces).
+        if (querySnapshot.empty && phoneNumber !== cleanPhone) {
+            const q2 = query(contactsRef, where('phoneNumber', '==', phoneNumber));
+            const snap2 = await getDocs(q2);
+            if (!snap2.empty) {
+                querySnapshot = snap2;
+            }
+        }
+
+        // Also check if stripped version matches (e.g. DB has 5551234567, clean is +905551234567)
+        if (querySnapshot.empty) {
+            const simple = phoneNumber.replace(/\D/g, '');
+            if (simple.length > 5 && simple !== cleanPhone && simple !== phoneNumber) {
+                const q3 = query(contactsRef, where('phoneNumber', '==', simple));
+                const snap3 = await getDocs(q3);
+                if (!snap3.empty) querySnapshot = snap3;
+            }
+        }
 
         if (!querySnapshot.empty) {
             // Update existing contact if name changed, or just return ID

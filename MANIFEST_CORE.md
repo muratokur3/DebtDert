@@ -37,3 +37,9 @@ Frontend: React + Vite + Tailwind CSS.
 Backend: Firebase (Firestore, Auth, Functions, Storage).
 
 Mobil Strateji: PWA ve ileride React Native (Expo). Bu yüzden tüm div yapıları mobil uyumlu (flex, touch-target) olmalıdır.
+
+4. Mimari Standartlar (Global State)
+
+Auth, Theme ve Modal yönetimi için React Context API kullanılır. Redux vb. harici kütüphaneler yasaktır.
+
+Global Modal Sistemi: Uygulama genelinde başarı, hata ve onay mesajları için `ModalContext` (Global Alert/Confirm) yapısı zorunludur. Ad-hoc `window.alert` kullanımı yasaktır.

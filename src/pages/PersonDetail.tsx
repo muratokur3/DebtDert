@@ -16,6 +16,9 @@ import clsx from 'clsx';
 
 import { useModal } from '../context/ModalContext';
 
+import { Timestamp } from 'firebase/firestore'; // Added import
+import type { User, Contact } from '../types'; // Added import
+
 export const PersonDetail = () => {
     const { id } = useParams<{ id: string }>(); // This can be a userId or a contactId (phone number)
     const { user } = useAuth();
@@ -25,6 +28,9 @@ export const PersonDetail = () => {
     const [rates, setRates] = useState<CurrencyRates | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [isRegisteredUser, setIsRegisteredUser] = useState(false);
+
+    // New State for Modal Target
+    const [targetUserObject, setTargetUserObject] = useState<User | Contact | null>(null);
 
     // Edit Contact State
     const [contactId, setContactId] = useState<string | null>(null);
@@ -70,24 +76,43 @@ export const PersonDetail = () => {
             if (!id || !user) return;
             const cleanId = cleanPhoneNumber(id);
 
+            let foundSysUser: User | null = null;
+            let foundContactData: Contact | undefined;
+
             // 1. Check Registration
-            if (id.length > 15) {
+            if (id.length > 20) { // UID check
+                // If ID is UID, we can't easily fetch user without getDoc logic here or relying on search.
+                // Assuming searchUserByPhone won't work for UID.
+                // But typically we navigate by phone in this app.
+                // If ID is UID, we assume registered.
                 setIsRegisteredUser(true);
             } else {
-                const userFound = await searchUserByPhone(id);
-                setIsRegisteredUser(!!userFound);
+                foundSysUser = await searchUserByPhone(id);
+                setIsRegisteredUser(!!foundSysUser);
             }
 
-            // 2. Find Contact ID for editing
+            // 2. Find Contact ID for editing AND for Modal Target
             try {
                 const myContacts = await getContacts(user.uid);
-                const foundContact = myContacts.find(c =>
+                foundContactData = myContacts.find(c =>
                     c.phoneNumber === cleanId || c.phoneNumber === id
                 );
-                if (foundContact) {
-                    setContactId(foundContact.id);
-                    setEditName(foundContact.name);
-                    setEditPhone(foundContact.phoneNumber);
+
+                if (foundContactData) {
+                    setContactId(foundContactData.id);
+                    setEditName(foundContactData.name);
+                    setEditPhone(foundContactData.phoneNumber);
+                    setTargetUserObject(foundContactData);
+                } else if (foundSysUser) {
+                    setTargetUserObject(foundSysUser);
+                } else {
+                    // Raw phone number, construct temp contact object for Modal
+                    setTargetUserObject({
+                        id: 'temp',
+                        name: formatPhoneNumber(id),
+                        phoneNumber: cleanId,
+                        createdAt: Timestamp.now()
+                    });
                 }
             } catch (error) {
                 console.error("Error finding contact:", error);
@@ -374,7 +399,7 @@ export const PersonDetail = () => {
                 isOpen={showCreateModal}
                 onClose={() => setShowCreateModal(false)}
                 initialPhoneNumber={id}
-                targetUser={undefined}
+                targetUser={targetUserObject}
                 onSubmit={async (borrowerId, borrowerName, amount, type, currency, note, dueDate, installments, canBorrowerAddPayment, requestApproval) => {
                     if (!user) return;
                     await import('../services/db').then(({ createDebt }) => createDebt(

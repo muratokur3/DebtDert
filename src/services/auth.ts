@@ -64,8 +64,7 @@ export const linkPasswordToPhone = async (user: User, password: string, displayN
             displayName: displayName,
             authEmail: pseudoEmail, // Read-only internal email
             recoveryEmail: recoveryEmail || null, // Real user email
-            createdAt: serverTimestamp(),
-            savedContacts: []
+            createdAt: serverTimestamp()
         }, { merge: true });
 
         // Claim existing debts related to this phone number
@@ -120,8 +119,7 @@ export const ensureUserDocument = async (user: User) => {
                 phoneNumber: phone,
                 displayName: user.displayName || 'Kullanıcı',
                 authEmail: user.email || null, // Might be null for SMS only
-                createdAt: serverTimestamp(),
-                savedContacts: []
+                createdAt: serverTimestamp()
             });
 
             if (phone) {

@@ -11,7 +11,7 @@ import clsx from 'clsx';
 
 export const Login = () => {
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'PASSWORD' | 'SMS'>('PASSWORD');
+    const [activeTab, setActiveTab] = useState<'PASSWORD' | 'SMS'>('SMS');
     const [loading, setLoading] = useState(false);
     const { showAlert } = useModal();
 
@@ -112,17 +112,6 @@ export const Login = () => {
                 {/* Tabs */}
                 <div className="flex bg-background rounded-xl p-1 mb-8 border border-slate-700">
                     <button
-                        onClick={() => setActiveTab('PASSWORD')}
-                        className={clsx(
-                            "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold transition-all",
-                            activeTab === 'PASSWORD'
-                                ? "bg-primary text-white shadow-md"
-                                : "text-text-secondary hover:text-text-primary hover:bg-surface"
-                        )}
-                    >
-                        <Lock size={16} /> Şifre ile
-                    </button>
-                    <button
                         onClick={() => setActiveTab('SMS')}
                         className={clsx(
                             "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold transition-all",
@@ -132,6 +121,17 @@ export const Login = () => {
                         )}
                     >
                         <MessageSquare size={16} /> SMS ile
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('PASSWORD')}
+                        className={clsx(
+                            "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold transition-all",
+                            activeTab === 'PASSWORD'
+                                ? "bg-primary text-white shadow-md"
+                                : "text-text-secondary hover:text-text-primary hover:bg-surface"
+                        )}
+                    >
+                        <Lock size={16} /> Şifre ile
                     </button>
                 </div>
 

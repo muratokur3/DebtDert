@@ -47,8 +47,8 @@ export const formatPhoneForDisplay = (cleanNumber: string): string => {
         const phoneNumber = parsePhoneNumber(cleanNumber);
         if (phoneNumber) {
             // "National" format for TR starts with 0 usually in libphonenumber? 
-            // parsePhoneNumber('+905551234567').format('NATIONAL') -> "0555 123 45 67"
-            return phoneNumber.format('NATIONAL');
+            // We want predictable +90 format or readable international for Contacts.
+            return phoneNumber.format('INTERNATIONAL');
         }
     } catch {
         // ignore

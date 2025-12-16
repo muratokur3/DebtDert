@@ -8,7 +8,6 @@ export interface User {
     email?: string;
     recoveryEmail?: string;
     photoURL?: string;
-    savedContacts?: string[]; // List of UIDs
     preferences?: {
         autoApproveDebt?: boolean;
         requireApproval?: boolean;

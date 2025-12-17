@@ -56,6 +56,7 @@ export interface Debt {
     deletedAt?: Timestamp;
     canBorrowerAddPayment?: boolean;
     allow_counterparty_edit?: boolean;
+    lockedPhoneNumber?: string; // Immutable E.164 phone number for recovery/display
 }
 
 export type PaymentLogType = 'INITIAL_CREATION' | 'PAYMENT' | 'NOTE_ADDED' | 'PAYMENT_DECLARATION';

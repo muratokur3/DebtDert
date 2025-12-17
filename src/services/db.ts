@@ -97,6 +97,18 @@ export const createDebt = async (
             initialStatus = 'PARTIALLY_PAID';
         }
 
+        // Determine Contact Phone for Locking & Auto-Add
+        let contactPhone = '';
+        if (counterpartyId.length <= 15) {
+            contactPhone = counterpartyId;
+        } else {
+            // If it's a UID, we might need the phone. 
+            // In this flow, check if we started with a phone target.
+            if (cleanTarget && cleanTarget.length <= 15) {
+                contactPhone = cleanTarget;
+            }
+        }
+
 
         const debtData = {
             lenderId,
@@ -113,7 +125,9 @@ export const createDebt = async (
             ...(dueDate && { dueDate: Timestamp.fromDate(dueDate) }),
             ...(note && { note }),
             ...(installments && { installments }),
+            ...(installments && { installments }),
             ...(canBorrowerAddPayment && { canBorrowerAddPayment }),
+            ...(contactPhone && { lockedPhoneNumber: contactPhone }), // Always lock phone number if available
         };
 
         // Use batch or transaction? 
@@ -162,16 +176,6 @@ export const createDebt = async (
             // If counterparty is a phone number or a user that might not be in my contacts
             // We blindly try to add/update contact. addContact handles duplicates nicely.
             // We use the cleaned phone for the ID check if possible.
-            let contactPhone = '';
-            if (counterpartyId.length <= 15) {
-                contactPhone = counterpartyId;
-            } else {
-                // If it's a UID, we might need the phone. 
-                // In this flow, check if we started with a phone target.
-                if (cleanTarget && cleanTarget.length <= 15) {
-                    contactPhone = cleanTarget;
-                }
-            }
 
             if (contactPhone) {
                 // Fire and forget contact addition to ensure names show up in Dashboard
@@ -462,10 +466,18 @@ export const claimLegacyDebts = async (userId: string, phoneNumber: string) => {
                 if (phoneIndex > -1) participants.splice(phoneIndex, 1);
                 if (!participants.includes(userId)) participants.push(userId);
 
-                transaction.update(debtRef, {
+                // Ensure lockedPhoneNumber is set
+                const updates: any = {
                     lenderId: userId,
                     participants
-                });
+                };
+
+                // CRITICAL: If no lockedPhoneNumber exists, using the phone number we just claimed
+                if (!currentData.lockedPhoneNumber) {
+                    updates.lockedPhoneNumber = cleanPhone;
+                }
+
+                transaction.update(debtRef, updates);
             });
         });
 
@@ -490,10 +502,18 @@ export const claimLegacyDebts = async (userId: string, phoneNumber: string) => {
                 if (phoneIndex > -1) participants.splice(phoneIndex, 1);
                 if (!participants.includes(userId)) participants.push(userId);
 
-                transaction.update(debtRef, {
+                // Ensure lockedPhoneNumber is set
+                const updates: any = {
                     borrowerId: userId,
                     participants
-                });
+                };
+
+                // CRITICAL: If no lockedPhoneNumber exists, using the phone number we just claimed
+                if (!currentData.lockedPhoneNumber) {
+                    updates.lockedPhoneNumber = cleanPhone;
+                }
+
+                transaction.update(debtRef, updates);
             });
         });
 

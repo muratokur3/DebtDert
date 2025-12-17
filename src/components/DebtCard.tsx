@@ -24,14 +24,44 @@ export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick
     const isLender = debt.lenderId === currentUserId;
     const rawOtherName = isLender ? debt.borrowerName : debt.lenderName;
     const otherId = isLender ? debt.borrowerId : debt.lenderId; // Can be UID or Phone
+    const lockedPhone = debt.lockedPhoneNumber;
 
     // Resolve the name using the ID (which might be phone) and fallback to snapshot name
-    const { displayName: otherPartyName, source } = resolveName(otherId, rawOtherName);
+    // Priority: 
+    // 1. Contact Match (via ID)
+    // 2. Contact Match (via lockedPhoneNumber)
+    // 3. Snapshot Name (if standard)
+    // 4. Formatted lockedPhoneNumber
+    // 5. Formatted ID (if phone)
+    let { displayName: otherPartyName, source } = resolveName(otherId, rawOtherName);
+
+    // If initial resolution failed to find a contact or useful name, try lockedPhoneNumber
+    if (source !== 'contact' && lockedPhone) {
+        // Try resolving name using the locked phone number
+        const lockedResolution = resolveName(lockedPhone, rawOtherName);
+        if (lockedResolution.source === 'contact') {
+            otherPartyName = lockedResolution.displayName;
+            source = 'contact';
+        } else if (source === 'user' && otherPartyName === otherId) {
+            // If primary resolution returned ID (bad), use locked phone resolution
+            otherPartyName = lockedResolution.displayName;
+            source = lockedResolution.source;
+        }
+    }
 
     // If still just a raw phone number (and source is not contact), format it nicely
     let finalDisplayName = otherPartyName;
-    if (source !== 'contact' && finalDisplayName.replace(/\D/g, '').length >= 10 && !finalDisplayName.includes(' ')) {
-        finalDisplayName = formatPhoneNumber(finalDisplayName);
+
+    // Check if the current name looks like a phone number
+    const isPhoneLike = (str: string) => str.replace(/\D/g, '').length >= 10 && !str.includes(' ');
+
+    if (source !== 'contact') {
+        if (isPhoneLike(finalDisplayName)) {
+            finalDisplayName = formatPhoneNumber(finalDisplayName);
+        } else if (finalDisplayName.length > 20 && lockedPhone) {
+            // If it looks like a UID and we have a locked phone, show formatted phone
+            finalDisplayName = formatPhoneNumber(lockedPhone);
+        }
     }
 
     const isPaid = debt.status === 'PAID';

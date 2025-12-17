@@ -73,3 +73,13 @@ export interface PaymentLog {
     status?: 'PENDING' | 'APPROVED' | 'REJECTED';
     installmentId?: string;
 }
+
+export interface DisplayProfile {
+    displayName: string;      // The best name to show
+    secondaryText: string;    // The subtext (Real name or Phone)
+    photoURL?: string;        // Real avatar or null
+    initials: string;         // Fallback for avatar
+    isSystemUser: boolean;    // For badges
+    isContact: boolean;       // To toggle "Add to Contact" buttons
+    phoneNumber: string;      // The immutable anchor
+}

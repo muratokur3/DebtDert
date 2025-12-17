@@ -15,7 +15,6 @@ import clsx from 'clsx';
 import type { Debt } from '../types';
 import { EditDebtModal } from '../components/EditDebtModal';
 import { updateDebt } from '../services/db';
-import { cleanPhone as cleanPhoneNumber } from '../utils/phoneUtils';
 import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
 
@@ -164,7 +163,7 @@ export const Dashboard = () => {
                 currency: 'TRY', // Contact list is unified in TRY
                 lastActivity: data.lastActivity,
                 lastActionSnippet: data.lastSnippet,
-                status: data.source === 'contact' ? 'contact' : (data.source === 'user' ? 'system' : 'none'),
+                status: data.source === 'contact' ? 'contact' : (data.source === 'user' && id.length > 20 ? 'system' : 'none'),
                 // photoURL: undefined 
             } as ContactSummary;
         }).filter(c => Math.abs(c.netBalance) > 0.01);
@@ -481,7 +480,7 @@ export const Dashboard = () => {
                             netBalance={contact.netBalance}
                             currency={contact.currency}
                             lastActionSnippet={contact.lastActionSnippet}
-                            onClick={() => navigate(`/person/${cleanPhoneNumber(contact.id)}`)}
+                            onClick={() => navigate(`/person/${contact.id}`, { state: { name: contact.name, phone: contact.id } })}
                             status={contact.status}
                             photoURL={contact.photoURL}
                         />

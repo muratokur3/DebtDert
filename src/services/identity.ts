@@ -3,13 +3,17 @@ import {
     getDoc,
     runTransaction,
     serverTimestamp,
-    updateDoc
+    updateDoc,
+    collection,
+    query,
+    where,
+    getDocs
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { RecaptchaVerifier, linkWithPhoneNumber } from 'firebase/auth';
 import { cleanPhone } from '../utils/phoneUtils';
 import { claimLegacyDebts } from './db';
-import type { User } from '../types';
+import type { Debt, DisplayProfile, Contact, User } from '../types';
 
 const REGISTRY_COLLECTION = 'phone_registry';
 const USERS_COLLECTION = 'users';
@@ -168,4 +172,171 @@ export const setPrimaryPhone = async (phoneNumber: string) => {
     await updateDoc(doc(db, USERS_COLLECTION, uid), {
         primaryPhoneNumber: clean
     });
+};
+
+/**
+ * Resolves the display profile for a user based on the "Golden Rule":
+ * 1. Contact (Nickname)
+ * 2. System User (Real Name)
+ * 3. Debt Snapshot (Ghost Name)
+ * 3. Debt Snapshot (Ghost Name)
+ * 4. Phone Number (Fallback)
+ */
+
+export const resolveUserDisplay = async (
+    currentUserId: string,
+    targetIdentifier: string, // uid OR phoneNumber
+    debtContext?: Debt
+): Promise<DisplayProfile> => {
+    let targetUid: string | null = null;
+    let targetPhone: string | null = null;
+
+    // 1. Normalize Inputs
+    if (targetIdentifier.startsWith('+') || targetIdentifier.length < 20) {
+        // It's a phone number
+        targetPhone = cleanPhone(targetIdentifier);
+        // Try to find UID if not known
+        targetUid = await resolvePhoneToUid(targetPhone); // Using existing function
+    } else if (targetIdentifier.startsWith('phone:')) {
+        // Shadow User UID "phone:+90555..."
+        targetPhone = cleanPhone(targetIdentifier.replace('phone:', ''));
+        targetUid = null;
+    } else {
+        // It's a standard UID
+        targetUid = targetIdentifier;
+        // We might not know phone yet, will fetch from User if needed
+    }
+
+    // Fallback Phone from Debt Context if we still don't have it and it's relevant
+    if (!targetPhone && debtContext && debtContext.lockedPhoneNumber) {
+        // Verify this debt is actually relevant to the target
+        const isTargetBorrower = debtContext.borrowerId === targetIdentifier || (debtContext.borrowerId.startsWith('phone:') && debtContext.borrowerId.includes(String(targetIdentifier)));
+        const isTargetLender = debtContext.lenderId === targetIdentifier || (debtContext.lenderId.startsWith('phone:') && debtContext.lenderId.includes(String(targetIdentifier)));
+
+        if (isTargetBorrower || isTargetLender) {
+            targetPhone = debtContext.lockedPhoneNumber;
+        }
+    }
+
+    // --- PRIORITY 1: PRIVATE CONTACT ---
+    // Check Address Book
+    let contact: Contact | null = null;
+
+    if (currentUserId) {
+        const contactsRef = collection(db, 'users', currentUserId, 'contacts');
+
+        // Strategy A: By UID (most accurate linkage)
+        // Only queries if we have a resolved UID
+        if (targetUid) {
+            const q = query(contactsRef, where('linkedUserId', '==', targetUid));
+            const snap = await getDocs(q);
+            if (!snap.empty) contact = snap.docs[0].data() as Contact;
+        }
+
+        // Strategy B: By Phone (if A failed and we have phone)
+        if (!contact && targetPhone) {
+            const q = query(contactsRef, where('phoneNumber', '==', targetPhone));
+            const snap = await getDocs(q);
+            if (!snap.empty) contact = snap.docs[0].data() as Contact;
+        }
+    }
+
+    // --- PRIORITY 2: SYSTEM PROFILE ---
+    let systemUser: User | null = null;
+    if (targetUid) {
+        const userDoc = await getDoc(doc(db, 'users', targetUid));
+        if (userDoc.exists()) {
+            systemUser = userDoc.data() as User;
+            // Backfill phone if we didn't have it
+            if (!targetPhone) targetPhone = systemUser.primaryPhoneNumber;
+        }
+    }
+
+    // DECISION LOGIC
+
+    // Is it a Contact? (Priority 1)
+    if (contact) {
+        // If system user found, link details
+        const realName = systemUser?.displayName || '';
+        const displayPhone = contact.phoneNumber || targetPhone || '';
+
+        return {
+            displayName: contact.name,
+            secondaryText: systemUser ? `App User: ${realName}` : displayPhone,
+            photoURL: systemUser?.photoURL, // Always show real avatar if linked
+            initials: getInitials(contact.name),
+            isSystemUser: !!systemUser,
+            isContact: true,
+            phoneNumber: displayPhone
+        };
+    }
+
+    // Is it a System User? (Priority 2)
+    if (systemUser) {
+        return {
+            displayName: systemUser.displayName,
+            secondaryText: systemUser.primaryPhoneNumber,
+            photoURL: systemUser.photoURL,
+            initials: getInitials(systemUser.displayName),
+            isSystemUser: true,
+            isContact: false,
+            phoneNumber: systemUser.primaryPhoneNumber
+        };
+    }
+
+    // --- PRIORITY 3: DEBT SNAPSHOT ---
+    if (debtContext) {
+        // Determine which side of the debt serves as the name source
+        let snapshotName = '';
+
+        // Check if target is borrower
+        if (debtContext.borrowerId === targetIdentifier || (targetPhone && debtContext.borrowerId === `phone:${targetPhone}`)) {
+            snapshotName = debtContext.borrowerName;
+        }
+        // Check if target is lender
+        else if (debtContext.lenderId === targetIdentifier || (targetPhone && debtContext.lenderId === `phone:${targetPhone}`)) {
+            snapshotName = debtContext.lenderName;
+        }
+
+        if (snapshotName) {
+            const finalPhone = targetPhone || debtContext.lockedPhoneNumber || '';
+            return {
+                displayName: snapshotName,
+                secondaryText: finalPhone,
+                photoURL: undefined,
+                initials: getInitials(snapshotName),
+                isSystemUser: false,
+                isContact: false,
+                phoneNumber: finalPhone
+            };
+        }
+    }
+
+    // --- PRIORITY 4: RAW FALLBACK ---
+    const finalFallback = targetPhone || targetIdentifier || "Unknown";
+    return {
+        displayName: formatPhoneNumberPretty(finalFallback),
+        secondaryText: "Bilinmeyen Kullanıcı",
+        photoURL: undefined,
+        initials: "?",
+        isSystemUser: false,
+        isContact: false,
+        phoneNumber: finalFallback
+    };
+};
+
+// Helper for Initials
+const getInitials = (name: string) => {
+    return name
+        .split(' ')
+        .map(n => n[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase();
+};
+
+// Helper for minimal formatting if utils not available
+const formatPhoneNumberPretty = (phone: string) => {
+    if (!phone) return '';
+    return phone.replace(/(\+\d{2})(\d{3})(\d{3})(\d{2})(\d{2})/, '$1 $2 $3 $4 $5');
 };

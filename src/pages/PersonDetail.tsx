@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useDebts } from '../hooks/useDebts';
 import { useContactName } from '../hooks/useContactName';
@@ -24,6 +24,7 @@ export const PersonDetail = () => {
     const { id } = useParams<{ id: string }>(); // This can be a userId or a contactId (phone number)
     const { user } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const { allDebts: debts, loading } = useDebts();
     const { resolveName } = useContactName(); // Added this
     const { showAlert, showConfirm } = useModal();
@@ -76,7 +77,10 @@ export const PersonDetail = () => {
     useEffect(() => {
         const checkRegistrationAndContact = async () => {
             if (!id || !user) return;
-            const cleanId = cleanPhoneNumber(id);
+            // Only clean if it looks like a phone number (short, starts with + or digit)
+            // If it's a long UID, leave it be.
+            const isUID = id.length > 20;
+            const cleanId = isUID ? id : cleanPhoneNumber(id);
 
             let foundSysUser: User | null = null;
             let foundContactData: Contact | undefined;
@@ -160,11 +164,19 @@ export const PersonDetail = () => {
         });
     }, [debts, id, user]);
 
-    // Get Person Info using standard hook
     const personInfo = useMemo(() => {
         // Determine fallback name and phone from debts if available
         let fallbackName = '';
-        const cleanId = cleanPhoneNumber(id || ''); // Always clean the ID from URL (handles + becoming space)
+
+        // Use navigation state as high priority fallback for immediate render (Fixes UID flash)
+        const locationState = location.state as { name?: string; phone?: string } | undefined;
+        if (locationState?.name) {
+            fallbackName = locationState.name;
+        }
+
+        // Always clean the ID from URL (handles + becoming space) IF it is a phone number.
+        const isUID = id && id.length > 20;
+        const cleanId = isUID ? (id || '') : cleanPhoneNumber(id || '');
         let phone = cleanId;
 
         if (personDebts.length > 0) {

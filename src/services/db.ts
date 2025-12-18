@@ -21,6 +21,7 @@ import { db } from './firebase';
 import type { Debt, DebtStatus, PaymentLog, User, Contact, Installment } from '../types';
 import { cleanPhone as cleanPhoneNumber } from '../utils/phoneUtils';
 import { checkBlockStatus } from './blockService'; // Import block service
+import { normalizeDebt } from '../utils/debtUtils';
 
 export const createDebt = async (
     currentUserId: string,
@@ -262,7 +263,7 @@ export const subscribeToUserDebts = (userId: string, callback: (debts: Debt[]) =
     );
 
     return onSnapshot(q, (snapshot) => {
-        const debts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Debt));
+        const debts = snapshot.docs.map(doc => normalizeDebt(doc.id, doc.data()));
         callback(debts);
     });
 };
@@ -270,7 +271,7 @@ export const subscribeToUserDebts = (userId: string, callback: (debts: Debt[]) =
 export const subscribeToDebtDetails = (debtId: string, callback: (debt: Debt) => void) => {
     return onSnapshot(doc(db, 'debts', debtId), (doc) => {
         if (doc.exists()) {
-            callback({ id: doc.id, ...doc.data() } as Debt);
+            callback(normalizeDebt(doc.id, doc.data()));
         }
     });
 };
@@ -337,7 +338,7 @@ export const addContact = async (currentUserId: string, name: string, phoneNumbe
         const contactsRef = collection(db, 'users', currentUserId, 'contacts');
 
         // Check if phone number already exists (Try strict clean first)
-        let q = query(contactsRef, where('phoneNumber', '==', cleanPhone));
+        const q = query(contactsRef, where('phoneNumber', '==', cleanPhone));
         let querySnapshot = await getDocs(q);
 
         // Double check: If strict failed, maybe stored as non-standard? 
@@ -373,9 +374,10 @@ export const addContact = async (currentUserId: string, name: string, phoneNumbe
         // Check if this phone corresponds to a system user
         let finalLinkedUserId = linkedUserId || null;
         if (!finalLinkedUserId) {
-            const systemUser = await searchUserByPhone(cleanPhone);
-            if (systemUser) {
-                finalLinkedUserId = systemUser.uid;
+            const { resolvePhoneToUid } = await import('./identity');
+            const resolvedUid = await resolvePhoneToUid(cleanPhone);
+            if (resolvedUid) {
+                finalLinkedUserId = resolvedUid;
             }
         }
 
@@ -779,7 +781,7 @@ export const deletePendingDebt = async (debtId: string, currentUserId: string) =
 
         // Check status
         if (data.status !== 'PENDING' && data.status !== 'REJECTED') {
-             throw new Error("Only PENDING or REJECTED debts can be deleted. Use Forgive for active debts.");
+            throw new Error("Only PENDING or REJECTED debts can be deleted. Use Forgive for active debts.");
         }
 
         await deleteDoc(debtRef);
@@ -812,7 +814,7 @@ export const forgiveDebt = async (debtId: string, currentUserId: string, note: s
             }
 
             if (data.remainingAmount <= 0) {
-                 throw new Error("Debt is already paid.");
+                throw new Error("Debt is already paid.");
             }
 
             // Update Debt

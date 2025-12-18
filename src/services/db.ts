@@ -20,6 +20,7 @@ import {
 import { db } from './firebase';
 import type { Debt, DebtStatus, PaymentLog, User, Contact, Installment } from '../types';
 import { cleanPhone as cleanPhoneNumber } from '../utils/phoneUtils';
+import { checkBlockStatus } from './blockService'; // Import block service
 import { normalizeDebt } from '../utils/debtUtils';
 
 export const createDebt = async (
@@ -68,6 +69,17 @@ export const createDebt = async (
 
         // CHECK PREFERENCES & FETCH USER DATA
         const counterpartyId = isLending ? borrowerId : lenderId;
+
+        // BLOCK CHECK:
+        // By this point, if targetUserId was a phone number that belongs to a user,
+        // it has been resolved to a UID in `finalTargetId` (and thus `counterpartyId`).
+        // So checking `counterpartyId.length > 20` covers both "direct UID" and "resolved phone" cases.
+        if (counterpartyId.length > 20) {
+            const isBlocked = await checkBlockStatus(currentUserId, counterpartyId);
+            if (isBlocked) {
+                throw new Error("Cannot create debt. User is blocked or has blocked you.");
+            }
+        }
 
         let initialStatus: DebtStatus = 'PENDING';
         let foundUserData: User | null = null;
@@ -749,6 +761,87 @@ export const restoreDebt = async (debtId: string) => {
     }
 };
 
+/**
+ * Deletes a debt completely.
+ * Allowed only if status is PENDING and performed by creator.
+ */
+export const deletePendingDebt = async (debtId: string, currentUserId: string) => {
+    try {
+        const debtRef = doc(db, 'debts', debtId);
+        const debtDoc = await getDoc(debtRef);
+
+        if (!debtDoc.exists()) throw new Error("Debt not found");
+
+        const data = debtDoc.data() as Debt;
+
+        // Check ownership
+        if (data.createdBy !== currentUserId) {
+            throw new Error("Only the creator can delete this debt.");
+        }
+
+        // Check status
+        if (data.status !== 'PENDING' && data.status !== 'REJECTED') {
+            throw new Error("Only PENDING or REJECTED debts can be deleted. Use Forgive for active debts.");
+        }
+
+        await deleteDoc(debtRef);
+    } catch (error) {
+        console.error("Error deleting pending debt:", error);
+        throw error;
+    }
+};
+
+/**
+ * Forgives an ACTIVE debt (Marks as FORGIVEN/PAID).
+ * Allowed only by Creator/Lender? Actually usually Lender forgives.
+ * In this app, Creator might be Borrower (I owe you).
+ * If I owe you, I can't forgive it. I can only pay it.
+ * If You owe me, I can forgive it.
+ */
+export const forgiveDebt = async (debtId: string, currentUserId: string, note: string = "Borç silindi / Vazgeçildi") => {
+    try {
+        await runTransaction(db, async (transaction) => {
+            const debtRef = doc(db, 'debts', debtId);
+            const debtDoc = await transaction.get(debtRef);
+
+            if (!debtDoc.exists()) throw new Error("Debt not found");
+
+            const data = debtDoc.data() as Debt;
+
+            // Only Lender can forgive
+            if (data.lenderId !== currentUserId) {
+                throw new Error("Only the lender can forgive the debt.");
+            }
+
+            if (data.remainingAmount <= 0) {
+                throw new Error("Debt is already paid.");
+            }
+
+            // Update Debt
+            transaction.update(debtRef, {
+                status: 'PAID', // Or we could introduce 'FORGIVEN' status if supported
+                remainingAmount: 0,
+                note: data.note ? data.note + `\n(Forgiven: ${note})` : `(Forgiven: ${note})`
+            });
+
+            // Log it
+            const logRef = doc(collection(db, `debts/${debtId}/logs`));
+            transaction.set(logRef, {
+                type: 'PAYMENT',
+                amountPaid: data.remainingAmount, // Full amount "paid"
+                previousRemaining: data.remainingAmount,
+                newRemaining: 0,
+                performedBy: currentUserId,
+                timestamp: serverTimestamp(),
+                note: note
+            });
+        });
+    } catch (error) {
+        console.error("Error forgiving debt:", error);
+        throw error;
+    }
+};
+
 export const permanentlyDeleteDebt = async (debtId: string, currentUserId: string) => {
     try {
         const debtRef = doc(db, 'debts', debtId);
@@ -757,8 +850,9 @@ export const permanentlyDeleteDebt = async (debtId: string, currentUserId: strin
         if (!debtDoc.exists()) return;
 
         const data = debtDoc.data();
-        if (!data.participants.includes(currentUserId)) {
-            throw new Error("Unauthorized to delete this debt.");
+        // Strict check: Only creator
+        if (data.createdBy !== currentUserId) {
+            throw new Error("Unauthorized to delete this debt. Only creator can delete.");
         }
 
         await deleteDoc(debtRef);

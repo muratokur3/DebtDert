@@ -9,6 +9,14 @@ service cloud.firestore {
       // VULNERABILITY FIX: Prevent creating other users' profiles
       allow create: if request.auth != null && request.auth.uid == userId;
       allow update: if request.auth != null && request.auth.uid == userId;
+
+      match /blocked/{targetUid} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /contacts/{contactId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
     
     match /debts/{debtId} {
@@ -16,7 +24,12 @@ service cloud.firestore {
       // VULNERABILITY FIX: Ensure creator is a participant
       allow create: if request.auth != null && request.auth.uid in request.resource.data.participants;
       allow update: if request.auth != null && request.auth.uid in resource.data.participants;
-      
+
+      // Allow delete only if user is the creator AND status is PENDING or REJECTED
+      allow delete: if request.auth != null &&
+                      resource.data.createdBy == request.auth.uid &&
+                      (resource.data.status == 'PENDING' || resource.data.status == 'REJECTED');
+
       match /logs/{logId} {
         allow read: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/debts/$(debtId)).data.participants;
         allow create: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/debts/$(debtId)).data.participants;

@@ -4,8 +4,9 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useDebts } from '../hooks/useDebts';
 import { useContactName } from '../hooks/useContactName';
-import { ArrowLeft, Plus, Phone, MessageCircle, Trash2, Edit2, X, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Plus, Phone, MessageCircle, Trash2, Edit2, X, MoreVertical, Ban } from 'lucide-react';
 import { searchUserByPhone, getContacts, updateContact } from '../services/db';
+import { blockUser, isUserBlocked, unblockUser } from '../services/blockService'; // Import block services
 import { Avatar } from '../components/Avatar';
 import { DebtCard } from '../components/DebtCard';
 import { CreateDebtModal } from '../components/CreateDebtModal';
@@ -42,6 +43,53 @@ export const PersonDetail = () => {
     const [editPhone, setEditPhone] = useState('');
     const [submittingEdit, setSubmittingEdit] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
+    const [isBlocked, setIsBlocked] = useState(false); // Block state
+
+    // Check block status
+    useEffect(() => {
+        const checkBlock = async () => {
+            if (!user || !id) return;
+            // We can only block UIDs
+            const targetUid = id.length > 20 ? id : (targetUserObject && 'uid' in targetUserObject ? targetUserObject.uid : null);
+
+            if (targetUid) {
+                const blocked = await isUserBlocked(user.uid, targetUid);
+                setIsBlocked(blocked);
+            }
+        };
+        checkBlock();
+    }, [user, id, targetUserObject]);
+
+    const handleBlockToggle = async () => {
+        if (!user) return;
+        const targetUid = id && id.length > 20 ? id : (targetUserObject && 'uid' in targetUserObject ? targetUserObject.uid : null);
+
+        if (!targetUid) {
+            showAlert("Uyarı", "Bu kişi sisteme kayıtlı değil, engellenemez. Sadece rehberinizden silebilirsiniz.", "warning");
+            return;
+        }
+
+        if (isBlocked) {
+             const confirmed = await showConfirm("Engeli Kaldır", "Kullanıcının engelini kaldırmak istiyor musunuz?");
+             if (confirmed) {
+                 await unblockUser(user.uid, targetUid);
+                 setIsBlocked(false);
+                 showAlert("Başarılı", "Engel kaldırıldı.", "success");
+             }
+        } else {
+            const confirmed = await showConfirm(
+                "Kullanıcıyı Engelle",
+                "Bu kullanıcıyı engellemek istediğinize emin misiniz? Size yeni borç isteği gönderemeyecek.",
+                "warning"
+            );
+            if (confirmed) {
+                await blockUser(user.uid, targetUid);
+                setIsBlocked(true);
+                showAlert("Engellendi", "Kullanıcı engellendi.", "success");
+            }
+        }
+    };
+
     // const [isScrolled, setIsScrolled] = useState(false); // Removed scroll logic
 
     /* Removed scroll effect
@@ -325,6 +373,12 @@ export const PersonDetail = () => {
                                             </button>
                                         )}
                                         <div className="h-px bg-border my-0"></div>
+                                        <button
+                                            onClick={() => { handleBlockToggle(); setShowMenu(false); }}
+                                            className="w-full text-left px-4 py-3 text-sm font-medium text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/10 flex items-center gap-2"
+                                        >
+                                            <Ban size={16} /> {isBlocked ? 'Engeli Kaldır' : 'Kullanıcıyı Engelle'}
+                                        </button>
                                         <button
                                             onClick={() => { handleDelete(); setShowMenu(false); }}
                                             className="w-full text-left px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2"

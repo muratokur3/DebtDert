@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDebtDetails } from '../hooks/useDebtDetails';
 import { usePayment } from '../hooks/usePayment';
-import { declarePayment, softDeleteDebt, updateDebt } from '../services/db';
+import { declarePayment, softDeleteDebt, updateDebt, deletePendingDebt, forgiveDebt } from '../services/db'; // Added new services
 import { useAuth } from '../hooks/useAuth';
 import { HistoryList } from '../components/HistoryList';
 import { PaymentModal } from '../components/PaymentModal';
 import { InstallmentList } from '../components/InstallmentList';
 import { EditDebtModal } from '../components/EditDebtModal';
 import { formatCurrency } from '../utils/format';
-import { ArrowLeft, Trash2, Edit2, MessageCircle, Phone } from 'lucide-react';
+import { ArrowLeft, Trash2, Edit2, MessageCircle, Phone, XCircle, CheckCircle } from 'lucide-react'; // Added icons
 import type { Debt } from '../types';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
@@ -34,15 +34,45 @@ export const DebtDetail = () => {
     const isBorrower = user?.uid === debt?.borrowerId;
 
     const handleDelete = async () => {
-        if (!debt) return;
-        const confirmed = await showConfirm(
-            "Borç Silme",
-            "Bu borç kaydını silmek istediğinize emin misiniz? Çöp kutusuna taşınacaktır."
+        if (!debt || !user) return;
+
+        // Logic for Pending Deletion (Hard Delete) vs Active (Soft/Forgive)
+        if (debt.status === 'PENDING' && debt.createdBy === user.uid) {
+             const confirmed = await showConfirm(
+                "Borcu İptal Et",
+                "Bu bekleyen borç kaydını tamamen silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
+                "warning"
+            );
+            if (confirmed) {
+                await deletePendingDebt(debt.id, user.uid);
+                navigate(-1);
+                showAlert("Başarılı", "Borç kaydı silindi.", "success");
+            }
+        } else {
+             // Fallback to soft delete for others or use Archive logic
+             const confirmed = await showConfirm(
+                "Arşivle",
+                "Bu borç kaydını arşivlemek/gizlemek istediğinize emin misiniz?",
+                "info"
+            );
+            if (confirmed) {
+                await softDeleteDebt(debt.id);
+                navigate(-1);
+                showAlert("Başarılı", "Kayıt arşivlendi.", "success");
+            }
+        }
+    };
+
+    const handleForgive = async () => {
+         if (!debt || !user) return;
+         const confirmed = await showConfirm(
+            "Borcu Sil / Hibe Et",
+            "Bu borcu ödendi olarak işaretleyip kapatmak istediğinize emin misiniz? Kalan tutar sıfırlanacak.",
+            "warning"
         );
         if (confirmed) {
-            await softDeleteDebt(debt.id);
-            navigate(-1);
-            showAlert("Başarılı", "Kayıt silindi.", "success");
+            await forgiveDebt(debt.id, user.uid);
+            showAlert("Başarılı", "Borç silindi/hibe edildi.", "success");
         }
     };
 
@@ -113,16 +143,28 @@ export const DebtDetail = () => {
                             )}
                         </div>
                     </div>
-                    {user?.uid === debt.createdBy && (
-                        <div className="flex gap-1">
+                    <div className="flex gap-1">
+                         {/* Forgive Button (Only Lender can forgive Active Debts) */}
+                         {isLender && debt.status !== 'PENDING' && debt.remainingAmount > 0 && (
+                            <button onClick={handleForgive} className="p-2 text-green-600 hover:bg-green-50 rounded-full" title="Borcu Sil/Hibe Et">
+                                <CheckCircle size={20} />
+                            </button>
+                        )}
+
+                        {/* Edit Button (Creator or allowed) */}
+                        {user?.uid === debt.createdBy && debt.status !== 'PAID' && (
                             <button onClick={() => setIsEditModalOpen(true)} className="p-2 text-blue-500 hover:bg-blue-50 rounded-full">
                                 <Edit2 size={20} />
                             </button>
-                            <button onClick={handleDelete} className="p-2 text-red-500 hover:bg-red-50 rounded-full">
-                                <Trash2 size={20} />
+                        )}
+
+                        {/* Delete/Cancel Button */}
+                        {(user?.uid === debt.createdBy || debt.status === 'PENDING') && (
+                            <button onClick={handleDelete} className="p-2 text-red-500 hover:bg-red-50 rounded-full" title={debt.status === 'PENDING' ? 'İptal Et' : 'Arşivle'}>
+                                {debt.status === 'PENDING' ? <XCircle size={20} /> : <Trash2 size={20} />}
                             </button>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </header>
 

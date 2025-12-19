@@ -3,6 +3,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import { ensureUserDocument } from '../services/auth';
+import { registerSession, monitorSession, signOutUser } from '../services/session';
 import type { User } from '../types';
 
 export const useAuth = () => {
@@ -11,6 +12,7 @@ export const useAuth = () => {
 
     useEffect(() => {
         let unsubscribeSnapshot: (() => void) | null = null;
+        let unsubscribeSession: (() => void) | null = null;
 
         const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
             // Clean up previous snapshot listener
@@ -18,10 +20,24 @@ export const useAuth = () => {
                 unsubscribeSnapshot();
                 unsubscribeSnapshot = null;
             }
+            // Clean up previous session listener
+            if (unsubscribeSession) {
+                unsubscribeSession();
+                unsubscribeSession = null;
+            }
 
             if (firebaseUser) {
                 try {
                     await ensureUserDocument(firebaseUser);
+                    // Register session (non-blocking)
+                    registerSession(firebaseUser.uid);
+
+                    // Monitor session for revocation
+                    unsubscribeSession = monitorSession(firebaseUser.uid, () => {
+                        console.warn("Session revoked from server. Logging out.");
+                        signOutUser();
+                    });
+
                 } catch (e) {
                     console.error("Auth ensure doc error", e);
                 }
@@ -48,6 +64,9 @@ export const useAuth = () => {
             unsubscribeAuth();
             if (unsubscribeSnapshot) {
                 unsubscribeSnapshot();
+            }
+            if (unsubscribeSession) {
+                unsubscribeSession();
             }
         };
     }, []);

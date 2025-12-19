@@ -902,3 +902,43 @@ export const fetchLastUsedName = async (userId: string, phoneNumber: string) => 
         return null;
     }
 };
+
+export const batchAddContacts = async (currentUserId: string, contacts: { name: string, phoneNumber: string }[]) => {
+    try {
+        const { resolvePhoneToUid } = await import('./identity');
+        const batch = writeBatch(db);
+        const contactsRef = collection(db, 'users', currentUserId, 'contacts');
+        const timestamp = serverTimestamp();
+
+        // Process in chunks of 20 to avoid overwhelming parallel reads if list is huge?
+        // Usually import is < 100. Parallel should be fine.
+
+        const tasks = contacts.map(async (contact) => {
+            const clean = cleanPhoneNumber(contact.phoneNumber);
+            // Skip invalid?
+            if (!clean || clean.length < 5) return;
+
+            let linkedUserId = null;
+            try {
+                linkedUserId = await resolvePhoneToUid(clean);
+            } catch (e) {
+                // Ignore resolution error
+            }
+
+            const newDocRef = doc(contactsRef); // Auto-ID
+            batch.set(newDocRef, {
+                name: contact.name,
+                phoneNumber: clean,
+                linkedUserId: linkedUserId || null,
+                createdAt: timestamp
+            });
+        });
+
+        await Promise.all(tasks);
+        await batch.commit();
+        return true;
+    } catch (error) {
+        console.error("Error batch adding contacts:", error);
+        throw error;
+    }
+};

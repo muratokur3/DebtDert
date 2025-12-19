@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2, RotateCcw, XCircle, Clock, CheckCircle2, UserX, ChevronRight, RefreshCw, Wallet } from 'lucide-react';
+import { ArrowLeft, Trash2, RotateCcw, XCircle, Clock, CheckCircle2, UserX, ChevronRight, RefreshCw, Wallet, Users } from 'lucide-react';
 import { useDebts } from '../hooks/useDebts';
 import { restoreDebt, permanentlyDeleteDebt, updateUserPreferences } from '../services/db';
 import { useAuth } from '../hooks/useAuth';
@@ -90,6 +90,20 @@ export const Settings = () => {
                 // Revert? For now, we assume success or user retries.
             }
         }
+    };
+
+    const [contactAccessEnabled, setContactAccessEnabled] = useState(true);
+
+    useEffect(() => {
+        const savedContacts = localStorage.getItem('contact_access_enabled');
+        if (savedContacts !== null) {
+            setContactAccessEnabled(JSON.parse(savedContacts));
+        }
+    }, []);
+
+    const handleContactAccessToggle = (val: boolean) => {
+        setContactAccessEnabled(val);
+        localStorage.setItem('contact_access_enabled', JSON.stringify(val));
     };
 
     const handleAutoDeleteChange = (val: string) => {
@@ -214,6 +228,12 @@ export const Settings = () => {
                                 title="Rehber Senkronizasyonu"
                                 description="Kişileri eşleştirmek için rehber periyodik olarak taransın."
                                 action={<Toggle checked={syncContacts} onChange={(v) => toggleSetting('syncContacts', v, setSyncContacts)} />}
+                            />
+                            <SettingsRow
+                                icon={Users}
+                                title="Rehber Erişimi"
+                                description="Rehberden kişi içe aktarma özelliğini aç/kapat."
+                                action={<Toggle checked={contactAccessEnabled} onChange={handleContactAccessToggle} />}
                             />
                         </div>
 

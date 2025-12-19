@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { getContacts, addContact, deleteContact, updateContact } from '../services/db';
+import { getContacts, addContact, deleteContact, updateContact, createDebt, batchAddContacts } from '../services/db';
 import type { Contact } from '../types';
 import { Search, ArrowLeft, Wallet, X } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -9,7 +9,7 @@ import { Avatar } from '../components/Avatar';
 import { cleanPhone, formatPhoneForDisplay as formatPhoneNumber } from '../utils/phoneUtils';
 import { CreateDebtModal } from '../components/CreateDebtModal';
 import { PhoneInput } from '../components/PhoneInput';
-import { createDebt } from '../services/db';
+import { ImportContactsButton } from '../components/ImportContactsButton';
 
 import { useModal } from '../context/ModalContext';
 
@@ -28,11 +28,52 @@ export const Contacts = () => {
     const [selectedContactForDebt, setSelectedContactForDebt] = useState<Contact | null>(null);
     const [showDebtModal, setShowDebtModal] = useState(false);
 
+    // Import Contact State
+    const [importedContacts, setImportedContacts] = useState<Partial<Contact>[]>([]);
+    const [showImportPreview, setShowImportPreview] = useState(false);
+    const [contactAccessEnabled, setContactAccessEnabled] = useState(true);
+
     // Form State
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [duplicateContact, setDuplicateContact] = useState<Contact | null>(null);
+
+    useEffect(() => {
+        const saved = localStorage.getItem('contact_access_enabled');
+        if (saved !== null) {
+            setContactAccessEnabled(JSON.parse(saved));
+        }
+    }, []);
+
+    const handleImportConfirm = async () => {
+        if (!user || importedContacts.length === 0) return;
+
+        setSubmitting(true);
+        try {
+            // Prepare valid contacts
+            const validContacts = importedContacts
+                .filter((c): c is { name: string; phoneNumber: string } => !!c.name && !!c.phoneNumber)
+                .map(c => ({ name: c.name, phoneNumber: c.phoneNumber }));
+
+            if (validContacts.length > 0) {
+                await batchAddContacts(user.uid, validContacts);
+
+                await loadContacts();
+                setShowImportPreview(false);
+                setImportedContacts([]);
+
+                showAlert("İçe Aktarma Başarılı", `${validContacts.length} kişi rehberinize eklendi.`, "success");
+            } else {
+                showAlert("Uyarı", "Geçerli kişi bulunamadı.", "warning");
+            }
+        } catch (error) {
+            console.error(error);
+            showAlert("Hata", "İçe aktarma sırasında bir sorun oluştu.", "error");
+        } finally {
+            setSubmitting(false);
+        }
+    };
 
     useEffect(() => {
         if (phone) {
@@ -179,11 +220,22 @@ export const Contacts = () => {
         <div className="min-h-full bg-background transition-colors duration-200">
             {/* Header */}
             <header className="bg-surface shadow-sm sticky top-0 z-40 transition-colors duration-200">
-                <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-                    <button onClick={() => navigate('/')} className="p-2 -ml-2 text-text-secondary hover:bg-background rounded-full transition-colors">
-                        <ArrowLeft size={20} />
-                    </button>
-                    <h1 className="text-lg font-bold text-text-primary">Rehberim</h1>
+                <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => navigate('/')} className="p-2 -ml-2 text-text-secondary hover:bg-background rounded-full transition-colors">
+                            <ArrowLeft size={20} />
+                        </button>
+                        <h1 className="text-lg font-bold text-text-primary">Rehberim</h1>
+                    </div>
+                    {contactAccessEnabled && (
+                        <ImportContactsButton
+                            existingContacts={contacts}
+                            onContactsSelected={(newContacts) => {
+                                setImportedContacts(newContacts);
+                                setShowImportPreview(true);
+                            }}
+                        />
+                    )}
                 </div>
             </header>
 
@@ -328,6 +380,58 @@ export const Contacts = () => {
                     </div>
                 )
             }
+
+            {/* Import Preview Modal */}
+            {showImportPreview && (
+                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-surface p-6 rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col relative">
+                        <button
+                            onClick={() => setShowImportPreview(false)}
+                            className="absolute right-4 top-4 p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                        >
+                            <X size={20} />
+                        </button>
+
+                        <h2 className="text-xl font-bold mb-4 text-text-primary">
+                            Kişileri Onayla
+                        </h2>
+
+                        <div className="overflow-y-auto flex-1 space-y-2 mb-4 pr-2">
+                             <p className="text-sm text-text-secondary mb-2">
+                                {importedContacts.length} yeni kişi eklenecek.
+                            </p>
+                            {importedContacts.map((contact, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-3 bg-background rounded-lg border border-border">
+                                    <div>
+                                        <div className="font-medium text-text-primary">{contact.name}</div>
+                                        <div className="text-xs text-text-secondary">{formatPhoneNumber(contact.phoneNumber || '')}</div>
+                                    </div>
+                                    <div className="p-1 bg-green-100 dark:bg-green-900/20 rounded text-green-600">
+                                        <span className="text-xs font-bold">YENİ</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                            <button
+                                onClick={() => setShowImportPreview(false)}
+                                className="flex-1 py-3 rounded-xl font-medium border border-border text-text-primary hover:bg-background transition-colors"
+                            >
+                                İptal
+                            </button>
+                            <button
+                                onClick={handleImportConfirm}
+                                disabled={submitting}
+                                className="flex-1 py-3 rounded-xl font-semibold bg-primary text-white hover:bg-blue-600 active:scale-95 transition-all"
+                            >
+                                {submitting ? 'Ekleniyor...' : 'Onayla ve Ekle'}
+                            </button>
+                        </div>
+                    </div>
+                 </div>
+            )}
+
             {/* Debt Modal */}
             <CreateDebtModal
                 isOpen={showDebtModal}

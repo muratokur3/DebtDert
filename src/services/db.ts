@@ -316,19 +316,20 @@ export const respondToDebtRequest = async (debtId: string, status: 'ACTIVE' | 'R
 export const searchUserByPhone = async (phoneNumber: string): Promise<User | null> => {
     const cleanPhone = cleanPhoneNumber(phoneNumber);
 
-    const q = query(
-        collection(db, 'users'),
-        where('phoneNumber', '==', cleanPhone),
-        limit(1)
-    );
+    // Use registry lookup to resolve UID securely
+    const { resolvePhoneToUid } = await import('./identity');
+    const uid = await resolvePhoneToUid(cleanPhone);
 
-    const querySnapshot = await getDocs(q);
-    if (querySnapshot.empty) {
+    if (!uid) {
         return null;
     }
 
-    const doc = querySnapshot.docs[0];
-    return { uid: doc.id, ...doc.data() } as User;
+    const userDoc = await getDoc(doc(db, 'users', uid));
+    if (!userDoc.exists()) {
+        return null;
+    }
+
+    return { uid: userDoc.id, ...userDoc.data() } as User;
 };
 // --- Contacts Services ---
 

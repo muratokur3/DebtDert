@@ -1,4 +1,4 @@
-import { Home, User, BookUser, GripHorizontal, Calculator, Plus, Settings } from 'lucide-react';
+import { Home, BookUser, GripHorizontal, Calculator, Plus, Settings } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useState } from 'react';

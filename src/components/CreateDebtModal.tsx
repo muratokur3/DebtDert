@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ChevronDown, ChevronUp, Ban } from 'lucide-react';
+import { X, ChevronUp, Ban } from 'lucide-react';
 import { SelectedUserCard } from './SelectedUserCard';
 import { UserSelector } from './UserSelector';
 import { searchUserByPhone, searchContacts, fetchLastUsedName } from '../services/db';

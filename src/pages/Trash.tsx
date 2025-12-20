@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trash2, RotateCcw, XCircle } from 'lucide-react';
 import { useDebts } from '../hooks/useDebts';

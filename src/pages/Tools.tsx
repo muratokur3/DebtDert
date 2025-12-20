@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calculator, ArrowRightLeft } from 'lucide-react';
+import { Calculator, ArrowRightLeft, Delete } from 'lucide-react';
 import { fetchRates, convertToTRY, type CurrencyRates } from '../services/currency';
 import { formatCurrency } from '../utils/format';
 import { clsx } from 'clsx';
@@ -8,11 +8,7 @@ export const Tools = () => {
     const [activeTab, setActiveTab] = useState<'CALCULATOR' | 'CONVERTER'>('CALCULATOR');
 
     return (
-        <div className="min-h-full bg-background pb-6 px-4">
-            <div className="sticky top-0 bg-background z-10 py-2 border-b border-border/50 mb-2 flex items-center justify-center">
-                <h1 className="text-lg font-bold text-text-primary text-center">Araçlar</h1>
-            </div>
-
+        <div className="min-h-full bg-background pb-6 px-4 pt-4">
             {/* Segmented Control */}
             <div className="bg-surface p-0.5 rounded-xl flex mb-4 border border-border">
                 <button
@@ -48,7 +44,14 @@ const CalculatorView = () => {
     const [display, setDisplay] = useState('0');
     const [prevValue, setPrevValue] = useState<number | null>(null);
     const [operator, setOperator] = useState<string | null>(null);
-    const [waitingForOperand, setWaitingForOperand] = useState(false);
+    const [waitingForOperand, setWaitingForOperand] = useState(true);
+
+    const clear = () => {
+        setDisplay('0');
+        setPrevValue(null);
+        setOperator(null);
+        setWaitingForOperand(true);
+    };
 
     const inputDigit = (digit: string) => {
         if (waitingForOperand) {
@@ -60,36 +63,22 @@ const CalculatorView = () => {
     };
 
     const inputDot = () => {
+        if (waitingForOperand) {
+            setDisplay('0.');
+            setWaitingForOperand(false);
+            return;
+        }
         if (!display.includes('.')) {
             setDisplay(display + '.');
-            setWaitingForOperand(false);
         }
     };
 
-    const clear = () => {
-        setDisplay('0');
-        setPrevValue(null);
-        setOperator(null);
-        setWaitingForOperand(false);
+    const backspace = () => {
+        if (waitingForOperand) return;
+        setDisplay(prev => prev.length > 1 ? prev.slice(0, -1) : '0');
     };
 
-    const performOperation = (nextOperator: string) => {
-        const inputValue = parseFloat(display);
-
-        if (prevValue === null) {
-            setPrevValue(inputValue);
-        } else if (operator) {
-            const currentValue = prevValue || 0;
-            const newValue = calculate(currentValue, inputValue, operator);
-            setPrevValue(newValue);
-            setDisplay(String(newValue));
-        }
-
-        setWaitingForOperand(true);
-        setOperator(nextOperator);
-    };
-
-    const calculate = (prev: number, next: number, op: string) => {
+    const calculate = (prev: number, next: number, op: string): number => {
         switch (op) {
             case '+': return prev + next;
             case '-': return prev - next;
@@ -99,20 +88,40 @@ const CalculatorView = () => {
         }
     };
 
-    const CalcButton = ({ label, type = 'default', onClick }: { label: string, type?: 'default' | 'operator' | 'action', onClick: () => void }) => {
-        let bgClass = "bg-surface text-text-primary hover:bg-slate-100 dark:hover:bg-slate-700";
-        if (type === 'operator') bgClass = "bg-orange-500 text-white hover:bg-orange-600";
-        if (type === 'action') bgClass = "bg-gray-300 dark:bg-slate-600 text-text-primary hover:bg-gray-400 dark:hover:bg-slate-500";
+    const performOperation = (nextOperator: string) => {
+        const inputValue = parseFloat(display);
+
+        if (operator && waitingForOperand) {
+            setOperator(nextOperator);
+            return;
+        }
+
+        if (prevValue === null) {
+            setPrevValue(inputValue);
+        } else if (operator) {
+            const result = calculate(prevValue, inputValue, operator);
+            setDisplay(String(result));
+            setPrevValue(result);
+        }
+
+        setWaitingForOperand(true);
+        setOperator(nextOperator === '=' ? null : nextOperator);
+    };
+
+
+    const CalcButton = ({ children, type = 'default', className, ...props }: { children: React.ReactNode, type?: 'default' | 'operator' | 'action', className?: string, [key: string]: any }) => {
+        let baseClass = "h-14 sm:h-16 rounded-xl sm:rounded-2xl text-xl sm:text-2xl font-medium shadow-sm active:scale-95 transition-all flex items-center justify-center";
+
+        let typeClass = "bg-surface text-text-primary hover:bg-slate-100 dark:hover:bg-slate-700";
+        if (type === 'operator') typeClass = "bg-orange-500 text-white hover:bg-orange-600";
+        if (type === 'action') typeClass = "bg-gray-300 dark:bg-slate-600 text-text-primary hover:bg-gray-400 dark:hover:bg-slate-500";
 
         return (
             <button
-                onClick={onClick}
-                className={clsx(
-                    "h-14 sm:h-16 rounded-xl sm:rounded-2xl text-xl sm:text-2xl font-medium shadow-sm active:scale-95 transition-all",
-                    bgClass
-                )}
+                className={clsx(baseClass, typeClass, className)}
+                {...props}
             >
-                {label}
+                {children}
             </button>
         );
     };
@@ -120,32 +129,32 @@ const CalculatorView = () => {
     return (
         <div className="max-w-xs mx-auto">
             <div className="bg-surface text-right p-4 sm:p-6 rounded-2xl mb-4 border border-border min-h-[4rem] sm:min-h-[5rem] flex items-end justify-end">
-                <span className="text-3xl sm:text-4xl font-bold text-text-primary truncate">{display}</span>
+                <span className="text-3xl sm:text-4xl font-bold text-text-primary break-all line-clamp-1">{display}</span>
             </div>
             <div className="grid grid-cols-4 gap-2 sm:gap-3">
-                <CalcButton label="C" type="action" onClick={clear} />
-                <CalcButton label="±" type="action" onClick={() => setDisplay(String(parseFloat(display) * -1))} />
-                <CalcButton label="%" type="action" onClick={() => setDisplay(String(parseFloat(display) / 100))} />
-                <CalcButton label="÷" type="operator" onClick={() => performOperation('/')} />
+                <CalcButton type="action" onClick={clear}>C</CalcButton>
+                <CalcButton type="action" onClick={backspace}><Delete size={24} /></CalcButton>
+                <CalcButton type="action" onClick={() => performOperation('%')}>%</CalcButton>
+                <CalcButton type="operator" onClick={() => performOperation('/')}>÷</CalcButton>
 
-                <CalcButton label="7" onClick={() => inputDigit('7')} />
-                <CalcButton label="8" onClick={() => inputDigit('8')} />
-                <CalcButton label="9" onClick={() => inputDigit('9')} />
-                <CalcButton label="×" type="operator" onClick={() => performOperation('*')} />
+                <CalcButton onClick={() => inputDigit('7')}>7</CalcButton>
+                <CalcButton onClick={() => inputDigit('8')}>8</CalcButton>
+                <CalcButton onClick={() => inputDigit('9')}>9</CalcButton>
+                <CalcButton type="operator" onClick={() => performOperation('*')}>×</CalcButton>
 
-                <CalcButton label="4" onClick={() => inputDigit('4')} />
-                <CalcButton label="5" onClick={() => inputDigit('5')} />
-                <CalcButton label="6" onClick={() => inputDigit('6')} />
-                <CalcButton label="-" type="operator" onClick={() => performOperation('-')} />
+                <CalcButton onClick={() => inputDigit('4')}>4</CalcButton>
+                <CalcButton onClick={() => inputDigit('5')}>5</CalcButton>
+                <CalcButton onClick={() => inputDigit('6')}>6</CalcButton>
+                <CalcButton type="operator" onClick={() => performOperation('-')}>-</CalcButton>
 
-                <CalcButton label="1" onClick={() => inputDigit('1')} />
-                <CalcButton label="2" onClick={() => inputDigit('2')} />
-                <CalcButton label="3" onClick={() => inputDigit('3')} />
-                <CalcButton label="+" type="operator" onClick={() => performOperation('+')} />
+                <CalcButton onClick={() => inputDigit('1')}>1</CalcButton>
+                <CalcButton onClick={() => inputDigit('2')}>2</CalcButton>
+                <CalcButton onClick={() => inputDigit('3')}>3</CalcButton>
+                <CalcButton type="operator" onClick={() => performOperation('+')}>+</CalcButton>
 
-                <button onClick={() => inputDigit('0')} className="col-span-2 h-14 sm:h-16 rounded-xl sm:rounded-2xl text-xl sm:text-2xl font-medium shadow-sm active:scale-95 transition-all bg-surface text-text-primary hover:bg-slate-100 dark:hover:bg-slate-700">0</button>
-                <CalcButton label="." onClick={inputDot} />
-                <CalcButton label="=" type="operator" onClick={() => performOperation('=')} />
+                <CalcButton className="col-span-2" onClick={() => inputDigit('0')}>0</CalcButton>
+                <CalcButton onClick={inputDot}>.</CalcButton>
+                <CalcButton type="operator" onClick={() => performOperation('=')}>=</CalcButton>
             </div>
         </div>
     );
@@ -167,21 +176,9 @@ const ConverterView = () => {
             const numAmount = parseFloat(amount);
             if (isNaN(numAmount)) return;
 
-            // Convert From -> TRY
             const amountInTry = convertToTRY(numAmount, fromCurrency, rates);
-
-            // Convert TRY -> To
-            // convertToTRY converts X -> TRY.
-            // To convert TRY -> Y, we need 1 / (Y -> TRY rate).
-            // This is slightly complex because our convertToTRY is one-way.
-            // Let's reuse convertToTRY logic but reverse it for the second step.
-
-            // Simplification: convertToTRY handles X -> TRY.
-            // If we want X -> Y:
-            // 1. X -> TRY
-            // 2. TRY -> Y (which is AmountInTry / (1 Y in TRY))
-
             const oneUnitToInTry = convertToTRY(1, toCurrency, rates);
+            
             if (oneUnitToInTry > 0) {
                 setResult(amountInTry / oneUnitToInTry);
             }

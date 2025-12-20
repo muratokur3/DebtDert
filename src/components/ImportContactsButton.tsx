@@ -3,8 +3,13 @@ import { Users, Loader2 } from 'lucide-react';
 import type { Contact } from '../types';
 import { cleanPhone } from '../utils/phoneUtils';
 
+export interface Conflict {
+    newContact: Partial<Contact>;
+    existingContact: Contact;
+}
+
 interface ImportContactsButtonProps {
-    onContactsSelected: (contacts: Partial<Contact>[]) => void;
+    onContactsSelected: (newContacts: Partial<Contact>[], conflicts: Conflict[]) => void;
     existingContacts: Contact[];
     className?: string;
 }
@@ -19,7 +24,7 @@ export const ImportContactsButton: React.FC<ImportContactsButtonProps> = ({
 
     const handleImport = async () => {
         if (!isSupported) {
-            alert('Tarayıcınız bu özelliği desteklemiyor. Bu özellik sadece desteklenen mobil tarayıcılarda (Chrome Mobile, Samsung Internet vb.) çalışır.');
+            alert('Tarayıcınız bu özelliği desteklemiyor. Bu özellik sadece modern mobil tarayıcılarda (örn: Android için Chrome) çalışır ve iOS (Safari/Chrome) üzerinde desteklenmez.');
             return;
         }
 
@@ -28,7 +33,7 @@ export const ImportContactsButton: React.FC<ImportContactsButtonProps> = ({
             const props = ['name', 'tel'];
             const options = { multiple: true };
 
-            // @ts-ignore - navigator.contacts is experimental and may not be in standard TS types
+            // @ts-ignore
             const selectedContacts = await navigator.contacts.select(props, options);
 
             if (!selectedContacts || selectedContacts.length === 0) {
@@ -36,11 +41,11 @@ export const ImportContactsButton: React.FC<ImportContactsButtonProps> = ({
                 return;
             }
 
-            const processedContacts: Partial<Contact>[] = [];
-            const processedNumbers = new Set<string>(); // To handle duplicates within the selection
+            const newContacts: Partial<Contact>[] = [];
+            const conflicts: Conflict[] = [];
+            const processedNumbers = new Set<string>();
 
-            // Add existing numbers to set for O(1) lookup, ensuring we normalize them too
-            const existingNumbers = new Set(existingContacts.map(c => cleanPhone(c.phoneNumber)));
+            const existingContactMap = new Map(existingContacts.map(c => [c.phoneNumber, c]));
 
             for (const contact of selectedContacts) {
                 const name = contact.name?.[0];
@@ -50,29 +55,32 @@ export const ImportContactsButton: React.FC<ImportContactsButtonProps> = ({
 
                 for (const tel of tels) {
                     const clean = cleanPhone(tel);
-                    if (!clean || clean.length < 8) continue; // Basic validity check
-
-                    // Deduplication logic
-                    if (existingNumbers.has(clean)) continue;
-                    if (processedNumbers.has(clean)) continue;
+                    if (!clean || clean.length < 8) continue;
+                    if (processedNumbers.has(clean)) continue; // Avoid duplicates from the same import batch
 
                     processedNumbers.add(clean);
-                    processedContacts.push({
+                    const existingContact = existingContactMap.get(clean);
+
+                    const newContactData = {
                         name: name,
                         phoneNumber: clean
-                    });
+                    };
 
-                    // Only take the first valid number for a contact to avoid clutter?
-                    // Or user might want all numbers.
-                    // Let's add all unique valid numbers.
+                    if (existingContact) {
+                        // Only a conflict if the name is different
+                        if (existingContact.name !== name) {
+                            conflicts.push({ newContact: newContactData, existingContact });
+                        }
+                    } else {
+                        newContacts.push(newContactData);
+                    }
                 }
             }
 
-            onContactsSelected(processedContacts);
+            onContactsSelected(newContacts, conflicts);
 
         } catch (error) {
             console.error('Error selecting contacts:', error);
-            // Don't alert if user just cancelled
         } finally {
             setIsLoading(false);
         }

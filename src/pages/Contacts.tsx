@@ -10,17 +10,18 @@ import { cleanPhone, formatPhoneForDisplay as formatPhoneNumber } from '../utils
 import { CreateDebtModal } from '../components/CreateDebtModal';
 import { PhoneInput } from '../components/PhoneInput';
 import { ImportContactsButton } from '../components/ImportContactsButton';
+import type { Conflict } from '../components/ImportContactsButton';
+import { ConflictResolutionModal } from '../components/ConflictResolutionModal';
 
 import { useModal } from '../context/ModalContext';
 
 export const Contacts = () => {
-    const { user, blockedUsers } = useAuth(); // Get blocked users
+    const { user, blockedUsers } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const { showAlert, showConfirm } = useModal();
     const [contacts, setContacts] = useState<Contact[]>([]);
 
-    // ... (rest of states)
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [showModal, setShowModal] = useState(false);
@@ -28,12 +29,12 @@ export const Contacts = () => {
     const [selectedContactForDebt, setSelectedContactForDebt] = useState<Contact | null>(null);
     const [showDebtModal, setShowDebtModal] = useState(false);
 
-    // Import Contact State
     const [importedContacts, setImportedContacts] = useState<Partial<Contact>[]>([]);
+    const [conflicts, setConflicts] = useState<Conflict[]>([]);
     const [showImportPreview, setShowImportPreview] = useState(false);
+    const [showConflictResolution, setShowConflictResolution] = useState(false);
     const [contactAccessEnabled, setContactAccessEnabled] = useState(true);
 
-    // Form State
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -46,40 +47,89 @@ export const Contacts = () => {
         }
     }, []);
 
-    const handleImportConfirm = async () => {
+    const handleContactsSelected = (newContacts: Partial<Contact>[], conflicts: Conflict[]) => {
+        setImportedContacts(newContacts);
+        setConflicts(conflicts);
+
+        if (conflicts.length > 0) {
+            setShowConflictResolution(true);
+        } else if (newContacts.length > 0) {
+            setShowImportPreview(true);
+        }
+    };
+
+    const handleConflictResolution = async (resolutions: { [key: string]: 'update' | 'skip' }) => {
+        if (!user) return;
+        setSubmitting(true);
+
+        const toUpdate: { id: string, data: Partial<Contact> }[] = [];
+
+        for (const phone in resolutions) {
+            if (resolutions[phone] === 'update') {
+                const conflict = conflicts.find(c => c.existingContact.phoneNumber === phone);
+                if (conflict) {
+                    toUpdate.push({ id: conflict.existingContact.id, data: { name: conflict.newContact.name } });
+                }
+            }
+        }
+
+        try {
+            for (const update of toUpdate) {
+                await updateContact(user.uid, update.id, update.data);
+            }
+
+            if (importedContacts.length > 0) {
+                await handleImportConfirm(false); // Don't reset state yet
+            }
+
+            await loadContacts();
+            showAlert("Başarılı", "Kişiler güncellendi ve eklendi.", "success");
+
+        } catch (error) {
+            console.error(error);
+            showAlert("Hata", "İşlem sırasında bir hata oluştu.", "error");
+        } finally {
+            resetImportState();
+            setSubmitting(false);
+        }
+    };
+
+
+    const handleImportConfirm = async (reset: boolean = true) => {
         if (!user || importedContacts.length === 0) return;
 
         setSubmitting(true);
         try {
-            // Prepare valid contacts
             const validContacts = importedContacts
                 .filter((c): c is { name: string; phoneNumber: string } => !!c.name && !!c.phoneNumber)
                 .map(c => ({ name: c.name, phoneNumber: c.phoneNumber }));
 
             if (validContacts.length > 0) {
                 await batchAddContacts(user.uid, validContacts);
-
                 await loadContacts();
-                setShowImportPreview(false);
-                setImportedContacts([]);
-
-                showAlert("İçe Aktarma Başarılı", `${validContacts.length} kişi rehberinize eklendi.`, "success");
-            } else {
-                showAlert("Uyarı", "Geçerli kişi bulunamadı.", "warning");
+                showAlert("İçe Aktarma Başarılı", `${validContacts.length} yeni kişi rehberinize eklendi.`, "success");
             }
         } catch (error) {
             console.error(error);
             showAlert("Hata", "İçe aktarma sırasında bir sorun oluştu.", "error");
         } finally {
-            setSubmitting(false);
+            if (reset) {
+                resetImportState();
+                setSubmitting(false);
+            }
         }
     };
+
+    const resetImportState = () => {
+        setShowImportPreview(false);
+        setShowConflictResolution(false);
+        setImportedContacts([]);
+        setConflicts([]);
+    }
 
     useEffect(() => {
         if (phone) {
             const cleanedInput = cleanPhone(phone);
-            // Only check if we have a valid-ish phone number (length check implicitly via cleanPhone or just existence)
-            // cleanPhone returns E.164 usually +90... so length > 3
             if (cleanedInput && cleanedInput.length > 5) {
                 const found = contacts.find(c =>
                     c.phoneNumber === cleanedInput &&
@@ -100,13 +150,11 @@ export const Contacts = () => {
         }
     }, [user]);
 
-    // Check for initial phone number from navigation
     useEffect(() => {
         const state = location.state as { initialPhone?: string } | null;
         if (state?.initialPhone) {
             setPhone(state.initialPhone);
             setShowModal(true);
-            // Clear state to prevent reopening on refresh
             window.history.replaceState({}, document.title);
         }
     }, [location]);
@@ -194,8 +242,6 @@ export const Contacts = () => {
         setShowDebtModal(false);
     };
 
-
-
     const openEditModal = (contact: Contact) => {
         setEditingContact(contact);
         setName(contact.name);
@@ -216,14 +262,12 @@ export const Contacts = () => {
         c.phoneNumber.includes(searchTerm)
     );
 
-    // Helper to check if contact is blocked
     const isContactBlocked = (contact: Contact) => {
         return contact.linkedUserId && blockedUsers.some(b => b.blockedUid === contact.linkedUserId);
     };
 
     return (
         <div className="min-h-full bg-background transition-colors duration-200">
-            {/* Header */}
             <header className="bg-surface shadow-sm sticky top-0 z-40 transition-colors duration-200">
                 <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -235,17 +279,13 @@ export const Contacts = () => {
                     {contactAccessEnabled && (
                         <ImportContactsButton
                             existingContacts={contacts}
-                            onContactsSelected={(newContacts) => {
-                                setImportedContacts(newContacts);
-                                setShowImportPreview(true);
-                            }}
+                            onContactsSelected={handleContactsSelected}
                         />
                     )}
                 </div>
             </header>
 
             <main className="max-w-2xl mx-auto p-4 space-y-4 pb-24">
-                {/* Search */}
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <Search size={18} className="text-text-secondary" />
@@ -259,7 +299,6 @@ export const Contacts = () => {
                     />
                 </div>
 
-                {/* List */}
                 {loading ? (
                     <div className="text-center py-10 text-text-secondary">Yükleniyor...</div>
                 ) : filteredContacts.length > 0 ? (
@@ -283,7 +322,7 @@ export const Contacts = () => {
                                                     name={contact.name}
                                                     size="md"
                                                     status={contact.linkedUserId ? 'system' : 'contact'}
-                                                    className={blocked ? "grayscale opacity-70" : "shadow-sm"}
+                                                    className={blocked ? "grayscale opacity-70" : ""}
                                                     uid={contact.linkedUserId}
                                                 />
                                                 {blocked && (
@@ -305,7 +344,6 @@ export const Contacts = () => {
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-1 pl-2">
-                                            {/* Quick Debt Creation Button */}
                                             {blocked ? (
                                                 <button
                                                     disabled
@@ -338,89 +376,74 @@ export const Contacts = () => {
                 )}
             </main>
 
-            {/* FAB */}
-            {/* FAB Removed per new navigation logic */}
-
-            {/* Modal */}
-            {
-                showModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                        <div className="bg-surface p-6 rounded-2xl w-full max-w-md relative">
-                            <button
-                                onClick={() => setShowModal(false)}
-                                className="absolute right-4 top-4 p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors"
-                            >
-                                <X size={20} />
-                            </button>
-
-                            <h2 className="text-xl font-bold mb-6 text-text-primary">
-                                {editingContact ? 'Kişiyi Düzenle' : 'Yeni Kişi Ekle'}
-                            </h2>
-
-                            <form onSubmit={handleSubmit} className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                                        Ad Soyad
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={name}
-                                        onChange={(e) => setName(e.target.value)}
-                                        className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all"
-                                        placeholder="Ad Soyad"
-                                        required
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-text-secondary mb-1">
-                                        Telefon Numarası
-                                    </label>
-                                    <PhoneInput
-                                        value={phone}
-                                        onChange={setPhone}
-                                        required
-                                        placeholder="555 123 45 67"
-                                    />
-                                    {duplicateContact && (
-                                        <div className="text-red-500 text-sm mt-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-                                            <p>Bu numara zaten rehberinizde <strong>{duplicateContact.name}</strong> adıyla kayıtlı.</p>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    disabled={submitting || !!duplicateContact}
-                                    className={`w-full py-3 rounded-xl font-semibold transition-all mt-2 ${
-                                        submitting || !!duplicateContact
-                                            ? 'bg-gray-300 dark:bg-slate-700 text-gray-500 cursor-not-allowed'
-                                            : 'bg-primary text-white hover:bg-blue-600 active:scale-95'
-                                    }`}
-                                >
-                                    {submitting ? 'Kaydediliyor...' : 'Kaydet'}
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                )
-            }
-
-            {/* Import Preview Modal */}
-            {showImportPreview && (
-                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-surface p-6 rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col relative">
+            {showModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-surface p-6 rounded-2xl w-full max-w-md relative">
                         <button
-                            onClick={() => setShowImportPreview(false)}
+                            onClick={closeModal}
                             className="absolute right-4 top-4 p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors"
                         >
                             <X size={20} />
                         </button>
-
-                        <h2 className="text-xl font-bold mb-4 text-text-primary">
-                            Kişileri Onayla
+                        <h2 className="text-xl font-bold mb-6 text-text-primary">
+                            {editingContact ? 'Kişiyi Düzenle' : 'Yeni Kişi Ekle'}
                         </h2>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-text-secondary mb-1">
+                                    Ad Soyad
+                                </label>
+                                <input
+                                    type="text"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all"
+                                    placeholder="Ad Soyad"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-text-secondary mb-1">
+                                    Telefon Numarası
+                                </label>
+                                <PhoneInput
+                                    value={phone}
+                                    onChange={setPhone}
+                                    required
+                                    placeholder="555 123 45 67"
+                                />
+                                {duplicateContact && (
+                                    <div className="text-red-500 text-sm mt-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                                        <p>Bu numara zaten rehberinizde <strong>{duplicateContact.name}</strong> adıyla kayıtlı.</p>
+                                    </div>
+                                )}
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={submitting || !!duplicateContact}
+                                className={`w-full py-3 rounded-xl font-semibold transition-all mt-2 ${
+                                    submitting || !!duplicateContact
+                                        ? 'bg-gray-300 dark:bg-slate-700 text-gray-500 cursor-not-allowed'
+                                        : 'bg-primary text-white hover:bg-blue-600 active:scale-95'
+                                }`}
+                            >
+                                {submitting ? 'Kaydediliyor...' : 'Kaydet'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
 
+            {showImportPreview && (
+                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-surface p-6 rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col relative">
+                        <button
+                            onClick={resetImportState}
+                            className="absolute right-4 top-4 p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                        >
+                            <X size={20} />
+                        </button>
+                        <h2 className="text-xl font-bold mb-4 text-text-primary">Kişileri Onayla</h2>
                         <div className="overflow-y-auto flex-1 space-y-2 mb-4 pr-2">
                              <p className="text-sm text-text-secondary mb-2">
                                 {importedContacts.length} yeni kişi eklenecek.
@@ -437,16 +460,15 @@ export const Contacts = () => {
                                 </div>
                             ))}
                         </div>
-
                         <div className="flex gap-3 pt-2">
                             <button
-                                onClick={() => setShowImportPreview(false)}
+                                onClick={resetImportState}
                                 className="flex-1 py-3 rounded-xl font-medium border border-border text-text-primary hover:bg-background transition-colors"
                             >
                                 İptal
                             </button>
                             <button
-                                onClick={handleImportConfirm}
+                                onClick={() => handleImportConfirm()}
                                 disabled={submitting}
                                 className="flex-1 py-3 rounded-xl font-semibold bg-primary text-white hover:bg-blue-600 active:scale-95 transition-all"
                             >
@@ -457,7 +479,14 @@ export const Contacts = () => {
                  </div>
             )}
 
-            {/* Debt Modal */}
+            {showConflictResolution && (
+                <ConflictResolutionModal
+                    conflicts={conflicts}
+                    onResolve={handleConflictResolution}
+                    onCancel={resetImportState}
+                />
+            )}
+
             <CreateDebtModal
                 isOpen={showDebtModal}
                 onClose={() => setShowDebtModal(false)}

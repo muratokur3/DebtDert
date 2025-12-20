@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { X, Search, ChevronDown, ChevronUp, Plus, Ban } from 'lucide-react';
-import { Avatar } from './Avatar';
-import { SelectedUserCard } from './SelectedUserCard'; // Import moved to top
-
+import { X, ChevronDown, ChevronUp, Ban } from 'lucide-react';
+import { SelectedUserCard } from './SelectedUserCard';
+import { UserSelector } from './UserSelector';
 import { searchUserByPhone, searchContacts, fetchLastUsedName } from '../services/db';
 import { formatCurrency } from '../utils/format';
-import { formatPhoneForDisplay } from '../utils/phoneUtils'; // Added import
+import { formatPhoneForDisplay } from '../utils/phoneUtils';
 import type { User, Contact, Installment } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { Toggle } from './Toggle';
 import { Timestamp } from 'firebase/firestore';
 import clsx from 'clsx';
+import { useModal } from '../context/ModalContext';
 
 interface CreateDebtModalProps {
     isOpen: boolean;
@@ -30,21 +30,17 @@ interface CreateDebtModalProps {
     ) => Promise<void>;
     initialPhoneNumber?: string;
     targetUser?: User | Contact | null;
-    initialName?: string; // New prop
+    initialName?: string;
 }
 
-import { useModal } from '../context/ModalContext';
-
 export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClose, onSubmit, initialPhoneNumber, targetUser, initialName: propInitialName }) => {
-    const { user, blockedUsers } = useAuth(); // Destructure blockedUsers
+    const { user, blockedUsers } = useAuth();
     const { showAlert } = useModal();
 
     // Derived state for initialization
     const derivedInitialName = targetUser
         ? ('displayName' in targetUser ? targetUser.displayName : targetUser.name)
         : (propInitialName || '');
-
-    // ... [rest unchanged]
 
     const initialPhone = targetUser
         ? ('uid' in targetUser
@@ -71,8 +67,6 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
     const [step, setStep] = useState<'SEARCH' | 'DETAILS'>('SEARCH');
     const [isShadowUser, setIsShadowUser] = useState(false);
 
-    // const [isManualSearch, setIsManualSearch] = useState(false); // Removed in favor of step
-
     // New Fields
     const [type, setType] = useState<'LENDING' | 'BORROWING'>('LENDING');
     const [currency, setCurrency] = useState('TRY');
@@ -80,7 +74,6 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
     const [dueDate, setDueDate] = useState('');
     const [showDetails, setShowDetails] = useState(false);
     const [canBorrowerAddPayment, setCanBorrowerAddPayment] = useState(false);
-
 
     // Installment State
     const [isInstallment, setIsInstallment] = useState(false);
@@ -95,7 +88,6 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
         if (isOpen) {
             setPhoneNumber(initialPhone);
             setBorrowerName(derivedInitialName);
-            // setIsManualSearch(false); 
 
             if (targetUser) {
                 setStep('DETAILS');
@@ -117,9 +109,6 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                 setStep('SEARCH');
                 setIsShadowUser(false);
             }
-
-            // Initialize requestApproval to false (user can manually check if needed)
-            // ...
 
             // Initialize canBorrowerAddPayment from preference
             if (user?.preferences?.defaultAllowPaymentAddition) {
@@ -160,18 +149,9 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                 return;
             }
 
-
             try {
                 // 1. Search Contacts
                 const contacts = await searchContacts(user.uid, phoneNumber);
-                // Filter out blocked users if they are linked?
-                // The requirements say: "Filter out users present in the blockedUsers collection. They should NOT appear in the autocomplete list"
-                // However, contacts are local. Linked users are the issue.
-                // We should probably show them but marked as blocked?
-                // "Filter out users present in the blockedUsers collection" implies strict filtering from the list.
-                // Let's filter linked blocked users from the list if possible, or mark them.
-                // But let's follow the requirement: Filter OUT.
-
                 const filteredContacts = contacts.filter(c =>
                     !c.linkedUserId || !blockedUsers.some(b => b.blockedUid === c.linkedUserId)
                 );
@@ -194,8 +174,6 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                 }
             } catch (error) {
                 console.error(error);
-            } finally {
-
             }
         };
 
@@ -226,11 +204,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
     };
 
     const handleSelectNewNumber = async (rawPhone: string) => {
-        // Ghost Memory Logic
-        // We use the raw input for locking
-        // User prompt says: "Create new record for [Formatted Phone]"
-
-        setPhoneNumber(rawPhone); // Keep input for now, will be cleaned on submit
+        setPhoneNumber(rawPhone);
         setFoundContact(null);
         setFoundUser(null);
         setSearchResults([]);
@@ -255,7 +229,6 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
         e.preventDefault();
         if (!user) return;
 
-        // Final Block Check before submission
         if (isTargetBlocked) {
             showAlert("Engellendi", "Engellediğiniz bir kullanıcıya işlem yapamazsınız.", "error");
             return;
@@ -270,22 +243,17 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
             return;
         }
 
-        // Determine final ID and Name
         let finalBorrowerId: string = phoneNumber || '';
         let finalBorrowerName = borrowerName;
 
         if (foundContact) {
             finalBorrowerId = foundContact.linkedUserId || foundContact.phoneNumber;
-            // Allow name override: IF user edited the name field, usage logic?
-            // Usually we trust the object, BUT user wants to edit displayed name.
-            // So if borrowerName is set, use it.
             finalBorrowerName = borrowerName || foundContact.name;
         } else if (foundUser) {
             finalBorrowerId = foundUser.uid;
             finalBorrowerName = borrowerName || foundUser.displayName;
         }
 
-        // Fallback: If name empty, use formatted phone or raw phone
         if (!finalBorrowerName) {
             finalBorrowerName = formatPhoneForDisplay(finalBorrowerId);
         }
@@ -312,7 +280,6 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                 }
             }
 
-            // 1. Create Debt
             await onSubmit(
                 finalBorrowerId,
                 finalBorrowerName,
@@ -324,11 +291,8 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                 generatedInstallments,
                 canBorrowerAddPayment,
                 true, // Always request approval
-                numDownPayment // Pass Initial Payment
+                numDownPayment
             );
-
-            // 2. Auto-add to Contacts is now handled inside createDebt service globally.
-            // Redundant call removed to prevent duplicates.
 
             onClose();
             // Reset form
@@ -346,20 +310,15 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
             setIsInstallment(false);
             setInstallmentCount(1);
             setCanBorrowerAddPayment(false);
-            setDownPayment(''); // Reset down payment
+            setDownPayment('');
 
         } catch (error) {
             console.error(error);
-            // Error handling from service (e.g. backend block check)
             if (error instanceof Error) {
-                // Check if the error message is generic
-                // The prompt asked: "Show a generic error: 'Bu kullanıcı gizlilik ayarları nedeniyle işlem kabul etmiyor.'"
-                // The service throws "Cannot create debt. User is blocked or has blocked you."
-                // I should intercept this error in the UI.
                 if (error.message.includes("blocked")) {
                     showAlert("İşlem Başarısız", "Bu kullanıcı gizlilik ayarları nedeniyle işlem kabul etmiyor.", "error");
                 } else {
-                     showAlert("Hata", "İşlem kaydedilirken bir hata oluştu.", "error");
+                    showAlert("Hata", "İşlem kaydedilirken bir hata oluştu.", "error");
                 }
             }
         } finally {
@@ -370,25 +329,25 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm pb-20 md:pb-4">
             <div className="bg-surface rounded-2xl w-full max-w-sm shadow-xl animate-in fade-in zoom-in duration-200 h-auto max-h-[80dvh] flex flex-col border border-slate-700">
-                <div className="flex justify-between items-center p-6 pb-2 flex-none">
-                    <h2 className="text-xl font-bold text-text-primary">Yeni İşlem Ekle</h2>
+                <div className="flex justify-between items-center p-4 border-b border-slate-800 flex-none">
+                    <h2 className="text-lg font-bold text-text-primary">Yeni İşlem Ekle</h2>
                     <button onClick={onClose} className="p-2 hover:bg-slate-700/50 rounded-full">
                         <X size={20} className="text-text-secondary" />
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+                <div className="flex-1 overflow-y-auto p-4 scrollbar-hide">
                     {/* Blocked Warning */}
                     {isTargetBlocked && (
                         <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800 flex items-center gap-2">
-                             <Ban className="text-red-600" size={18} />
-                             <p className="text-sm text-red-700 dark:text-red-300 font-medium">Bu kullanıcı engellendiği için işlem yapılamaz.</p>
+                            <Ban className="text-red-600" size={18} />
+                            <p className="text-sm text-red-700 dark:text-red-300 font-medium">Bu kullanıcı engellendiği için işlem yapılamaz.</p>
                         </div>
                     )}
 
-                    <form id="create-debt-form" onSubmit={handleSubmit} className="space-y-4">
-                        {/* Type Toggle */}
-                        <div className="flex p-1 bg-background rounded-xl border border-slate-700">
+                    <form id="create-debt-form" onSubmit={handleSubmit} className="space-y-3">
+                        {/* 1. Transaction Type (Top Row) */}
+                        <div className="flex p-1 bg-background rounded-xl border border-slate-700 mb-3">
                             <button
                                 type="button"
                                 onClick={() => setType('LENDING')}
@@ -397,7 +356,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                                     type === 'LENDING' ? "bg-surface text-green-500 shadow-sm" : "text-text-secondary hover:text-text-primary"
                                 )}
                             >
-                                Borç Veriyorum
+                                Borç Verdim (Alacaklıyım)
                             </button>
                             <button
                                 type="button"
@@ -407,13 +366,11 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                                     type === 'BORROWING' ? "bg-surface text-red-500 shadow-sm" : "text-text-secondary hover:text-text-primary"
                                 )}
                             >
-                                Borç Alıyorum
+                                Borçlandım (Vereceğim)
                             </button>
                         </div>
 
-                        {/* Type Toggle */}
-
-                        {/* Flow Control */}
+                        {/* 2. User Selection (Row 2) */}
                         {step === 'DETAILS' ? (
                             <SelectedUserCard
                                 name={foundContact?.name || foundUser?.displayName || (isShadowUser ? borrowerName : '')}
@@ -430,98 +387,26 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                                 }}
                             />
                         ) : (
-                            /* Unified Search Input */
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <Search size={18} className="text-gray-400" />
-                                </div>
-                                <input
-                                    type="text"
-                                    value={phoneNumber}
-                                    onChange={(e) => {
-                                        setPhoneNumber(e.target.value);
-                                        // Reset outcomes
-                                        setFoundContact(null);
-                                        setFoundUser(null);
-                                    }}
-                                    className="w-full pl-10 pr-12 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all"
-                                    placeholder="İsim veya Telefon Ara..."
-                                    autoFocus
-                                />
-
-                                {/* Search Results Dropdown */}
-                                {(searchResults.length > 0 || foundUser || (phoneNumber.replace(/\D/g, '').length >= 3)) && (
-                                    <div className="mt-2 bg-surface border border-border rounded-xl shadow-lg overflow-hidden max-h-60 overflow-y-auto absolute w-full z-20">
-                                        {/* Contacts */}
-                                        {searchResults.map(contact => (
-                                            <div
-                                                key={contact.id}
-                                                onClick={() => handleSelectContact(contact)}
-                                                className="p-3 hover:bg-blue-50 dark:hover:bg-slate-800 cursor-pointer flex items-center gap-3 border-b border-gray-50 dark:border-slate-800 last:border-0"
-                                            >
-                                                <Avatar
-                                                    name={contact.name}
-                                                    size="sm"
-                                                    status={contact.linkedUserId ? 'system' : 'contact'}
-                                                    uid={contact.linkedUserId}
-                                                />
-                                                <div>
-                                                    <p className="text-sm font-semibold text-text-primary">{contact.name}</p>
-                                                    <p className="text-xs text-text-secondary">{contact.phoneNumber} (Rehber)</p>
-                                                </div>
-                                            </div>
-                                        ))}
-
-                                        {/* System User Match */}
-                                        {foundUser && !searchResults.some(c => c.phoneNumber === (foundUser as User).phoneNumber) && (
-                                            <div
-                                                onClick={() => handleSelectUser(foundUser as User)}
-                                                className="p-3 hover:bg-green-50 dark:hover:bg-green-900/20 cursor-pointer flex items-center gap-3 border-t border-gray-100 dark:border-slate-800"
-                                            >
-                                                <Avatar
-                                                    name={(foundUser as User).displayName || ''}
-                                                    photoURL={(foundUser as User).photoURL || undefined}
-                                                    size="sm"
-                                                    status="system"
-                                                />
-                                                <div>
-                                                    <p className="text-sm font-semibold text-text-primary">{(foundUser as User).displayName}</p>
-                                                    <p className="text-xs text-green-600 dark:text-green-400">Sistem Kullanıcısı</p>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Create New Entry Row */}
-                                        {phoneNumber.replace(/\D/g, '').length >= 10 && !foundUser && !searchResults.some(c => c.phoneNumber.includes(phoneNumber.replace(/\D/g, ''))) && (
-                                            <div
-                                                onClick={() => handleSelectNewNumber(phoneNumber)}
-                                                className="p-3 hover:bg-blue-50 dark:hover:bg-slate-800 cursor-pointer flex items-center gap-3 border-t border-gray-100 dark:border-slate-800"
-                                            >
-                                                <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-text-secondary">
-                                                    <Plus size={16} /> {/* Need to import Plus */}
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm font-semibold text-text-primary">Yeni Kişi Oluştur</p>
-                                                    <p className="text-xs text-text-secondary">{formatPhoneForDisplay(phoneNumber)}</p>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Empty State */}
-                                        {searchResults.length === 0 && !foundUser && phoneNumber.length > 0 && phoneNumber.replace(/\D/g, '').length < 10 && (
-                                            <div className="p-4 text-center text-text-secondary text-sm">
-                                                Sonuç bulunamadı. Yeni numara için en az 10 hane girin.
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
+                            <UserSelector
+                                phoneNumber={phoneNumber}
+                                onPhoneChange={(val) => {
+                                    setPhoneNumber(val);
+                                    setFoundContact(null);
+                                    setFoundUser(null);
+                                }}
+                                searchResults={searchResults}
+                                foundUser={foundUser}
+                                onSelectContact={handleSelectContact}
+                                onSelectUser={handleSelectUser}
+                                onSelectNewNumber={handleSelectNewNumber}
+                                autoFocus
+                            />
                         )}
 
-
-                        <div className="flex gap-3">
-                            <div className="flex-1">
-                                <label className="block text-sm font-medium text-text-secondary mb-1">Tutar</label>
+                        {/* 3. Amount & Currency (Row 3) */}
+                        <div className="grid grid-cols-[7fr_3fr] gap-3 mt-3">
+                            <div className="flex flex-col">
+                                <label className="text-xs font-medium text-text-secondary mb-1 ml-1">Tutar</label>
                                 <input
                                     type="number"
                                     value={amount}
@@ -529,58 +414,70 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                                     min={0}
                                     step="0.01"
                                     disabled={isTargetBlocked}
-                                    className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all text-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-full px-4 h-14 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all text-2xl font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                                     placeholder="0.00"
                                     required
                                 />
                             </div>
-                            <div className="w-1/3">
-                                <label className="block text-sm font-medium text-text-secondary mb-1">Para Birimi</label>
+                            <div className="flex flex-col">
+                                <label className="text-xs font-medium text-text-secondary mb-1 ml-1">Birim</label>
                                 <select
                                     value={currency}
                                     onChange={(e) => setCurrency(e.target.value)}
                                     disabled={isTargetBlocked}
-                                    className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-full px-2 h-14 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                                 >
                                     <option value="TRY">TRY</option>
                                     <option value="USD">USD</option>
                                     <option value="EUR">EUR</option>
-                                    <option value="GOLD">Altın (Gr)</option>
+                                    <option value="GOLD">Altın</option>
                                 </select>
                             </div>
                         </div>
 
-                        {/* Note Field - Moved Here */}
-                        <div>
-                            <label className="block text-sm font-medium text-text-secondary mb-1">Not</label>
-                            <textarea
-                                value={note}
-                                onChange={(e) => setNote(e.target.value)}
-                                rows={2}
-                                disabled={isTargetBlocked}
-                                className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
-                                placeholder="Borç ile ilgili not..."
-                            />
-                        </div>
-
-
-                        {/* Expandable Details */}
-                        <div>
+                        {/* 4. Collapsible Details */}
+                        <div className="pt-2">
                             <button
                                 type="button"
                                 onClick={() => setShowDetails(!showDetails)}
                                 disabled={isTargetBlocked}
-                                className="flex items-center gap-2 text-sm text-blue-600 font-medium hover:text-blue-700 transition-colors w-full justify-center py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex items-center gap-2 text-sm text-blue-600 font-medium hover:text-blue-700 transition-colors w-full justify-center py-2 disabled:opacity-50 disabled:cursor-not-allowed bg-blue-50/50 dark:bg-blue-900/10 rounded-lg"
                             >
                                 {showDetails ? (
                                     <>Daha Az Detay <ChevronUp size={16} /></>
                                 ) : (
-                                    <>Taksit, Vade ve Diğer Detaylar <ChevronDown size={16} /></>
+                                    <>Detaylar & Taksit Seçenekleri 🔽</>
                                 )}
                             </button>
 
                             {showDetails && (
-                                <div className="space-y-4 pt-2 animate-in fade-in slide-in-from-top-2 duration-200 mt-2">
+                                <div className="space-y-4 pt-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    {/* Note */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-text-secondary mb-1">Not (Opsiyonel)</label>
+                                        <textarea
+                                            value={note}
+                                            onChange={(e) => setNote(e.target.value)}
+                                            rows={2}
+                                            disabled={isTargetBlocked}
+                                            className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                                            placeholder="Açıklama giriniz..."
+                                        />
+                                    </div>
+
+                                    {/* Date */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-text-secondary mb-1">
+                                            {isInstallment ? 'İlk Taksit Tarihi' : 'Vade Tarihi (Opsiyonel)'}
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={dueDate}
+                                            onChange={(e) => setDueDate(e.target.value)}
+                                            className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all"
+                                        />
+                                    </div>
+
                                     {/* Installment Toggle */}
                                     <div className={clsx(
                                         "p-4 rounded-xl border transition-all",
@@ -615,27 +512,16 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                                                     />
                                                 </div>
 
-                                                <div className="flex gap-3">
-                                                    <div className="flex-1">
-                                                        <label className="block text-xs font-medium text-text-secondary mb-1">Taksit Sayısı</label>
-                                                        <input
-                                                            type="number"
-                                                            value={installmentCount}
-                                                            onChange={(e) => setInstallmentCount(parseInt(e.target.value))}
-                                                            min={2}
-                                                            max={24}
-                                                            className="w-full px-3 py-2 rounded-lg border border-slate-600 bg-surface/50 text-text-primary text-sm focus:border-primary outline-none"
-                                                        />
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <label className="block text-xs font-medium text-text-secondary mb-1">İlk Taksit Tarihi</label>
-                                                        <input
-                                                            type="date"
-                                                            value={dueDate}
-                                                            onChange={(e) => setDueDate(e.target.value)}
-                                                            className="w-full px-3 py-2 rounded-lg border border-slate-600 bg-surface/50 text-text-primary text-sm focus:border-primary outline-none"
-                                                        />
-                                                    </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-text-secondary mb-1">Taksit Sayısı</label>
+                                                    <input
+                                                        type="number"
+                                                        value={installmentCount}
+                                                        onChange={(e) => setInstallmentCount(parseInt(e.target.value))}
+                                                        min={2}
+                                                        max={24}
+                                                        className="w-full px-3 py-2 rounded-lg border border-slate-600 bg-surface/50 text-text-primary text-sm focus:border-primary outline-none"
+                                                    />
                                                 </div>
 
                                                 <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
@@ -661,13 +547,13 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                                             label=""
                                         />
                                     </div>
-
                                 </div>
                             )}
                         </div>
                     </form>
                 </div>
 
+                {/* Sticky Footer */}
                 <div className="p-4 border-t border-slate-800 bg-surface rounded-b-2xl flex-none z-10 w-full">
                     <button
                         type="submit"
@@ -678,7 +564,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                         {loading ? 'İşleniyor...' : 'Kaydet'}
                     </button>
                 </div>
-            </div >
-        </div >
+            </div>
+        </div>
     );
 };

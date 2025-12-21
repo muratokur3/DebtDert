@@ -21,7 +21,10 @@ Dokunma Hedefleri: Tüm butonlar ve liste elemanları en az 48px yüksekliğinde
 Bottom Navigation: Mobil deneyimde ana menü her zaman altta sabittir (fixed bottom-0). Klavye açıldığında davranışı yönetilmelidir.
     - Ana Sayfa: Genel bakış ve özet.
     - Araçlar: Hesap makinesi ve döviz çevirici.
-    - Hızlı İşlem / Ekle: Ortadaki ana aksiyon butonu.
+    - Hızlı İşlem (FAB): Rota duyarlı ana aksiyon.
+        - Global: Mavi (Genel Borç Ekle).
+        - Kişi Detay: Mor (Bu Kişiye Borç Ekle).
+        - Borç Detay: Yeşil (Bu Borca Ödeme Ekle).
     - Rehber: Kişi listesi.
     - Ayarlar: (Eski Profil ve Genel sekmeleri birleştirildi). Kullanıcı profili, hesap ayarları, uygulama tercihleri ve çöp kutusu burada yer alır.
 
@@ -31,11 +34,11 @@ Safe Area: iPhone çentiği (Notch) ve alt çubuğu (Home Indicator) için pt-sa
 
 3. Modallar ve Pop-uplar
 
-Context-Aware: Bir borca tıklandığında açılan detay modalı, kullanıcının o borçtaki rolüne (Alacaklı mı Borçlu mu?) göre şekillenmelidir.
+Görünüm: Borç detayları ve geçmişi **Chat (Sohbet)** arayüzü şeklinde listelenir.
+- Oluşturanın işlemleri SAĞDA.
+- Karşı tarafın işlemleri SOLDA hizalanır.
 
-Alacaklı ise: "Ödeme Alındı Ekle", "Hatırlat" butonları önde olur.
-
-Borçlu ise: "Ödeme Yaptım Bildir" butonu önde olur.
+Alacaklı/Borçlu olması fark etmeksizin; "Benim Eklediklerim" (Right) ve "Onun Ekledikleri" (Left) ayrımı esastır.
 
 3.3. Seçim Kartı (SelectedUserCard)
     Kullanıcı bir kişi seçtiğinde arama inputu yerine beliren standart bileşendir.
@@ -54,6 +57,7 @@ Tarih: Tarih seçici (DatePicker) mobil uyumlu (Native) olmalıdır.
 
 5. Bildirim Merkezi (In-App Notifications)
 
+    Anasayfada her kartın altında, içine girmeye gerek kalmadan "Ahmet 500TL ödeme ekledi" gibi son aktivite özeti (Last Activity) görünmelidir.
     Kullanıcı onayları, reddedilen borçlar ve ödeme bildirimleri, sağ üstteki 'Zil' ikonu altında toplanır.
     Okunmamış bildirimler kırmızı bir rozet (badge) ile gösterilir.
     Bildirimler modal içinde listelenir ve tıklandığında ilgili borcun detayına veya işlem ekranına yönlendirir.

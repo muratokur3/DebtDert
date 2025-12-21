@@ -6,15 +6,16 @@ DebtDert - Borç ve Ödeme Manifestosu (Debt Logic)
 
 Görünürlük: Borcu giren kişi (Creator), kaydı anında "Hesap Defterim"de görür ve bakiyesine yansır.
 
-Karşı Taraf: Karşı taraf (Receiver), kaydı sadece "Gelen İstekler" kutusunda görür. Onaylayana kadar bakiyesine yansımaz.
+Karşı Taraf: Karşı taraf (Receiver), kaydı anında görür (Asimetrik Güven). Engelleme şansı yoktur, sadece "Reddet/Sil" (Opt-Out) yapabilir.
 
 Zorunlu Alanlar: Tutar, Para Birimi, Karşı Taraf (Telefon), Borç Tipi (Alacak/Verecek).
 
-1.2. Onay Mekanizması (Approval)
+1.2. Onay Mekanizması YOKTUR (Asymmetric Trust)
+Borç girildiği anda **ACTIVE** (Geçerli) durumdadır. "Onay Bekliyor" (Pending) statüsü kaldırılmıştır.
 
-Onay (ACTIVE): Karşı taraf onaylarsa borç resmileşir. İki tarafın da bakiyesinde görünür.
-
-Red (REJECTED): Karşı taraf reddederse, Creator'a bildirim gider. Kayıt "İptal Edildi" statüsüne geçer (Silinmez, tarihçede kalır).
+Red (REJECTED_BY_RECEIVER): Karşı taraf kaydı reddederse/silerse:
+*   Kendi listesinden ve bakiyesinden silinir.
+*   Oluşturan kişinin (Creator) listesinde "Karşı Taraf Sildi" olarak görünmeye devam eder (Veri Bütünlüğü).
 
 1.3. Ödeme Süreci (Payments)
 
@@ -22,7 +23,7 @@ Kim Ödeme Ekleyebilir?
 
 Alacaklı (Lender): Ödeme eklerse işlem anında onaylanır ve bakiye düşer.
 
-Borçlu (Borrower): Ödeme eklerse bu bir "Ödeme Bildirimi"dir. Alacaklı onaylayana kadar bakiye düşmez (Güvenlik Kuralı).
+Borçlu (Borrower): Ödeme eklerse işlem **anında** yansır (Eğer alacaklı `allowPaymentEntry` iznini kapatmadıysa). Onay gerekmez. Alacaklının "Reddetme" (Ters işlem) hakkı saklıdır.
 
 Kısmi Ödeme: Borçlar parça parça ödenebilir.
 

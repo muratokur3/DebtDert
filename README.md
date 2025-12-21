@@ -6,7 +6,8 @@ Arkadaşlarınızla aranızdaki alacak/verecek durumunu takip etmenizi sağlayan
 - **Kişiler arası borç takibi:** Alacak ve verecekleri tek ekrandan yönetin.
 - **Çoklu Para Birimi:** TRY, USD, EUR, Altın gibi farklı birimlerle işlem yapın.
 - **gölge Kullanıcılar:** Uygulamayı kullanmayan arkadaşlarınızı rehberden ekleyip takip edebilirsiniz.
-- **Onay Mekanizması:** Karşı taraf uygulamayı kullanıyorsa işlemler onaydan geçer.
+- **Asimetrik Güven Modeli (V2):** Tüm borç ve ödeme kayıtları anında işlenir. Onay mekanizması yoktur, sadece "Reddet/Sil" hakkı saklıdır.
+- **Chat Arayüzü:** Borç detayları modern bir sohbet akışı şeklinde (Sağ/Sol hizalı) görüntülenir.
 
 ## Son Güncellemeler (v0.1.0)
 

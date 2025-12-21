@@ -23,7 +23,7 @@ Veri Sahipliği:
 
 Veriyi giren (Creator) her zaman verinin sahibidir.
 
-Veri adına girilen (Receiver) sadece onay/red hakkına sahiptir.
+Veri adına girilen (Receiver) işlemi engelleyemez, sadece tek taraflı olarak reddedebilir/silebilir (Opt-Out). Bu işlem, kaydı sadece kendi ekranından kaldırır.
 
 Para Birimi:
 

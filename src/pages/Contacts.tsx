@@ -1,14 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { getContacts, addContact, deleteContact, updateContact, createDebt, batchAddContacts } from '../services/db';
+import { getContacts, deleteContact, updateContact, createDebt, batchAddContacts } from '../services/db';
 import type { Contact } from '../types';
 import { Search, ArrowLeft, Wallet, X, Ban } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { SwipeableItem } from '../components/SwipeableItem';
 import { Avatar } from '../components/Avatar';
-import { cleanPhone, formatPhoneForDisplay as formatPhoneNumber } from '../utils/phoneUtils';
+import { formatPhoneForDisplay as formatPhoneNumber } from '../utils/phoneUtils';
 import { CreateDebtModal } from '../components/CreateDebtModal';
-import { PhoneInput } from '../components/PhoneInput';
 import { ImportContactsButton } from '../components/ImportContactsButton';
 import type { Conflict } from '../components/ImportContactsButton';
 import { ConflictResolutionModal } from '../components/ConflictResolutionModal';
@@ -245,6 +244,35 @@ export const Contacts = () => {
         c.phoneNumber.includes(searchTerm)
     );
 
+    const groupedContacts = useMemo(() => {
+        const groups: Record<string, Contact[]> = {};
+
+        // 1. Sort Alphabetically (Turkish Support)
+        const sorted = [...filteredContacts].sort((a, b) =>
+            a.name.localeCompare(b.name, 'tr', { sensitivity: 'base' })
+        );
+
+        // 2. Group by First Letter
+        sorted.forEach(contact => {
+            let letter = contact.name.charAt(0).toLocaleUpperCase('tr');
+            if (!/[A-ZÇĞİÖŞÜ]/.test(letter)) {
+                letter = '#';
+            }
+            if (!groups[letter]) {
+                groups[letter] = [];
+            }
+            groups[letter].push(contact);
+        });
+
+        return groups;
+    }, [filteredContacts]);
+
+    const sortedGroupKeys = Object.keys(groupedContacts).sort((a, b) => {
+        if (a === '#') return 1;
+        if (b === '#') return -1;
+        return a.localeCompare(b, 'tr');
+    });
+
     const isContactBlocked = (contact: Contact) => {
         return contact.linkedUserId && blockedUsers.some(b => b.blockedUid === contact.linkedUserId);
     };
@@ -272,9 +300,10 @@ export const Contacts = () => {
                 </div>
             </header>
 
-            <main className="max-w-2xl mx-auto p-4 space-y-4 pb-24">
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <main className="max-w-2xl mx-auto space-y-4 pb-24">
+                {/* Search Bar */}
+                <div className="relative px-4 mt-4">
+                    <div className="absolute inset-y-0 left-0 pl-7 flex items-center pointer-events-none">
                         <Search size={18} className="text-text-secondary" />
                     </div>
                     <input
@@ -282,83 +311,96 @@ export const Contacts = () => {
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         placeholder="Kişi ara..."
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-border focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all bg-surface text-text-primary"
+                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-border focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all bg-surface text-text-primary shadow-sm"
                     />
                 </div>
 
                 {loading ? (
                     <div className="text-center py-10 text-text-secondary">Yükleniyor...</div>
                 ) : filteredContacts.length > 0 ? (
-                    <div className="bg-surface rounded-xl shadow-sm border border-border divide-y divide-border overflow-hidden transition-colors duration-200">
-                        {filteredContacts.map(contact => {
-                            const blocked = isContactBlocked(contact);
-                            return (
-                                <SwipeableItem
-                                    key={contact.id}
-                                    onSwipeLeft={() => handleDeleteContact(contact.id)}
-                                    onSwipeRight={() => openEditModal(contact)}
-                                    className="mb-0"
-                                >
-                                    <div className="p-4 flex items-center justify-between hover:bg-background/50 transition-colors">
-                                        <div
-                                            onClick={() => navigate(`/person/${contact.phoneNumber}`, { state: { name: contact.name, phone: contact.phoneNumber } })}
-                                            className="flex items-center gap-3 cursor-pointer flex-1"
-                                        >
-                                            <div className="w-10 h-10 flex items-center justify-center relative">
-                                                <Avatar
-                                                    name={contact.name}
-                                                    size="md"
-                                                    status={contact.linkedUserId ? 'system' : 'contact'}
-                                                    className={blocked ? "grayscale opacity-70" : ""}
-                                                    uid={contact.linkedUserId}
-                                                />
-                                                {blocked && (
-                                                    <div className="absolute -bottom-1 -right-1 bg-surface rounded-full p-0.5 border border-border">
-                                                        <Ban size={12} className="text-red-500" />
+                    <div className="bg-transparent">
+                        {sortedGroupKeys.map(letter => (
+                            <div key={letter} className="relative">
+                                {/* Sticky Header */}
+                                <div className="sticky top-[60px] z-30 bg-gray-50/95 dark:bg-slate-900/95 backdrop-blur-sm px-6 py-2 border-y border-gray-100 dark:border-slate-800 text-sm font-bold text-primary shadow-sm">
+                                    {letter}
+                                </div>
+
+                                {/* Group Items */}
+                                <div className="bg-surface divide-y divide-border border-b border-border last:border-0">
+                                    {groupedContacts[letter].map(contact => {
+                                        const blocked = isContactBlocked(contact);
+                                        return (
+                                            <SwipeableItem
+                                                key={contact.id}
+                                                onSwipeLeft={() => handleDeleteContact(contact.id)}
+                                                onSwipeRight={() => openEditModal(contact)}
+                                                className="mb-0"
+                                            >
+                                                <div className="p-4 pl-5 flex items-center justify-between hover:bg-background/50 transition-colors min-h-[72px]">
+                                                    <div
+                                                        onClick={() => navigate(`/person/${contact.phoneNumber}`, { state: { name: contact.name, phone: contact.phoneNumber } })}
+                                                        className="flex items-center gap-4 cursor-pointer flex-1"
+                                                    >
+                                                        <div className="w-12 h-12 flex items-center justify-center relative shrink-0">
+                                                            <Avatar
+                                                                name={contact.name}
+                                                                size="md"
+                                                                status={contact.linkedUserId ? 'system' : 'contact'}
+                                                                className={blocked ? "grayscale opacity-70" : "shadow-sm"}
+                                                                uid={contact.linkedUserId}
+                                                            />
+                                                            {blocked && (
+                                                                <div className="absolute -bottom-1 -right-1 bg-surface rounded-full p-0.5 border border-border">
+                                                                    <Ban size={14} className="text-red-500" />
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex items-center gap-2 mb-0.5">
+                                                                <h3 className={`font-bold text-base truncate ${blocked ? 'text-gray-500 line-through decoration-red-500/50' : 'text-text-primary'}`}>
+                                                                    {contact.name}
+                                                                </h3>
+                                                                {blocked && <span className="text-[10px] font-bold text-red-500 bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded">Engelli</span>}
+                                                            </div>
+                                                            <p className="text-sm text-text-secondary truncate">{formatPhoneNumber(contact.phoneNumber)}</p>
+                                                        </div>
                                                     </div>
-                                                )}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h3 className={`font-semibold ${blocked ? 'text-gray-500 line-through decoration-red-500/50' : 'text-text-primary'}`}>
-                                                        {contact.name}
-                                                    </h3>
-                                                    {blocked && <span className="text-[10px] font-bold text-red-500 bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded">Engelli</span>}
+
+                                                    {/* Actions */}
+                                                    <div className="flex items-center gap-2 pl-3">
+                                                        {blocked ? (
+                                                            <button disabled className="p-2 text-gray-300 dark:text-gray-600 cursor-not-allowed">
+                                                                <Ban size={20} />
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setSelectedContactForDebt(contact);
+                                                                    setShowDebtModal(true);
+                                                                }}
+                                                                className="p-2.5 rounded-full bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                                            >
+                                                                <Wallet size={20} />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <p className="text-sm text-text-secondary">{formatPhoneNumber(contact.phoneNumber)}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-1 pl-2">
-                                            {blocked ? (
-                                                <button
-                                                    disabled
-                                                    className="w-10 h-10 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-400 flex items-center justify-center cursor-not-allowed"
-                                                >
-                                                    <Ban size={20} />
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setSelectedContactForDebt(contact);
-                                                        setShowDebtModal(true);
-                                                    }}
-                                                    className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 flex items-center justify-center hover:scale-110 active:scale-95 transition-transform"
-                                                >
-                                                    <Wallet size={20} />
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                </SwipeableItem>
-                            );
-                        })}
+                                            </SwipeableItem>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 ) : (
-                    <div className="text-center py-10 text-text-secondary">
-                        <p>Kayıtlı kişi bulunamadı.</p>
+                    <div className="text-center py-20 px-4">
+                        <div className="bg-surface inline-flex p-4 rounded-full mb-4 shadow-sm border border-border">
+                            <Search size={32} className="text-text-secondary opacity-50" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-text-primary mb-1">Kişi Bulunamadı</h3>
+                        <p className="text-text-secondary text-sm">Aradığınız kriterlere uygun kayıt yok.</p>
                     </div>
                 )}
             </main>

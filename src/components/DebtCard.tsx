@@ -111,19 +111,19 @@ export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick
         }
 
         // Overrides for special statuses
-        if (isPaid) baseBg = "bg-gray-100 dark:bg-slate-800 border-gray-200 opacity-80";
+        if (isPaid) baseBg = "bg-gray-100 dark:bg-slate-800 border-slate-200 opacity-80";
         if (isRejectedByReceiver) baseBg = "bg-red-50 border-red-200 opacity-80";
-        if (disabled) baseBg = "bg-gray-100 dark:bg-slate-800 border-gray-200 opacity-60";
+        if (disabled) baseBg = "bg-gray-100 dark:bg-slate-800 border-slate-200 opacity-60";
     } else {
         // Default Mode
         baseBg = isPaid
-            ? "bg-gray-50 border-gray-200 opacity-70"
+            ? "bg-gray-50 border-slate-200 opacity-70"
             : isRejectedByReceiver
                 ? "bg-red-50 border-red-200 opacity-80 decoration-slice"
                 : isLender
-                    ? "bg-green-50/50 border-green-100 dark:bg-green-900/10 dark:border-green-800"
-                    : "bg-red-50/50 border-red-100 dark:bg-red-900/10 dark:border-red-800";
-        if (disabled) baseBg = "bg-gray-100 border-gray-200 dark:bg-slate-800 dark:border-slate-700 opacity-80";
+                    ? "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
+                    : "bg-red-50/50 border-red-200 dark:bg-red-900/10 dark:border-red-800";
+        if (disabled) baseBg = "bg-gray-100 border-slate-200 dark:bg-slate-800 dark:border-slate-700 opacity-80";
     }
 
     // Chat Title Logic
@@ -133,7 +133,7 @@ export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick
         <div
             onClick={onClick}
             className={clsx(
-                "p-4 border active:scale-[0.98] transition-all cursor-pointer relative shadow-sm",
+                "p-4 border active:scale-[0.98] transition-all cursor-pointer relative shadow-md hover:shadow-lg",
                 isChat ? "rounded-2xl mb-1" : "rounded-2xl",
                 baseBg
             )}
@@ -178,13 +178,19 @@ export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick
                         </div>
 
                         {/* Tutar */}
-                        <div className={clsx(
-                            "font-bold tracking-tight shrink-0",
-                            isChat ? "text-base" : "text-lg",
-                            isPaid || isRejectedByReceiver ? "text-gray-400 line-through" : (isLender ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"),
-                            disabled && "opacity-50"
-                        )}>
-                            {formatCurrency(debt.remainingAmount, debt.currency)}
+                        <div className="flex flex-col items-end shrink-0">
+                            <div className={clsx(
+                                "font-bold tracking-tight",
+                                isChat ? "text-base" : "text-lg",
+                                isPaid || isRejectedByReceiver ? "text-gray-400 line-through" : (isLender ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"),
+                                disabled && "opacity-50"
+                            )}>
+                                {formatCurrency(debt.remainingAmount, debt.currency)}
+                            </div>
+                            {/* Original Amount - Only show if different or explicitly requested. User requested it for PersonDetail (Chat) */}
+                            <div className="text-[10px] text-text-secondary opacity-70">
+                                Ana: {formatCurrency(debt.originalAmount, debt.currency)}
+                            </div>
                         </div>
                     </div>
 

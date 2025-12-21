@@ -15,6 +15,7 @@ interface ContactRowProps {
     status?: 'none' | 'system' | 'contact';
     photoURL?: string;
     linkedUserId?: string;
+    hasUnreadActivity?: boolean;
 }
 
 export const ContactRow: React.FC<ContactRowProps> = React.memo(({
@@ -26,7 +27,8 @@ export const ContactRow: React.FC<ContactRowProps> = React.memo(({
     onClick,
     status = 'none',
     photoURL,
-    linkedUserId
+    linkedUserId,
+    hasUnreadActivity // Destructure new prop
 }) => {
     const isReceivable = netBalance > 0;
     const isPayable = netBalance < 0;
@@ -77,6 +79,7 @@ export const ContactRow: React.FC<ContactRowProps> = React.memo(({
             onClick={handleClick}
             actionButton={BalanceInfo}
             className="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 shadow-sm active:scale-[0.99] hover:bg-gray-50 dark:hover:bg-slate-750"
+            isUnread={hasUnreadActivity} // Pass it down
         />
     );
 });

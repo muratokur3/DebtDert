@@ -91,7 +91,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                         disabled={loading || !amount}
                         className="w-full bg-primary text-white py-3 rounded-xl font-semibold hover:bg-blue-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        {loading ? 'İşleniyor...' : 'Ödemeyi Onayla'}
+                        {loading ? 'İşleniyor...' : 'Ödeme Ekle'}
                     </button>
                 </form>
             </div>

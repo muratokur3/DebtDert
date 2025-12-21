@@ -26,8 +26,8 @@ export const InstallmentList: React.FC<InstallmentListProps> = ({ installments, 
 
                     return (
                         <div key={inst.id} className={clsx(
-                            "p-3 rounded-lg border flex justify-between items-center",
-                            inst.isPaid ? "bg-green-50 border-green-100" : "bg-white border-gray-100",
+                            "p-3 rounded-lg border flex justify-between items-center shadow-sm",
+                            inst.isPaid ? "bg-green-50 border-green-200" : "bg-white border-slate-200",
                             !canPay && !inst.isPaid && "opacity-50"
                         )}>
                             <div>

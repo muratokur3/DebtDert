@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useDebts } from '../hooks/useDebts';
+import { useContacts } from '../hooks/useContacts';
 import { useAuth } from '../hooks/useAuth';
 import { useContactName } from '../hooks/useContactName';
 import { ContactRow } from '../components/ContactRow';
@@ -20,6 +21,7 @@ import { tr } from 'date-fns/locale';
 import { FeedbackWidget } from '../components/FeedbackWidget';
 
 // Types
+// Types
 interface ContactSummary {
     id: string; // The unique identifier for the contact (User ID or Phone Number)
     name: string;
@@ -30,6 +32,7 @@ interface ContactSummary {
     status: 'none' | 'system' | 'contact';
     photoURL?: string; // Added support for avatar
     linkedUserId?: string;
+    hasUnreadActivity?: boolean; // New Field
 }
 
 export const Dashboard = () => {
@@ -39,7 +42,7 @@ export const Dashboard = () => {
 
     const [showNotifications, setShowNotifications] = useState(false);
     const { notifications } = useNotifications();
-    // const { isContact } = useContacts(); // Unused
+    const { contactsMap } = useContacts(); // Get contacts map
     const { resolveName } = useContactName();
     const [editingDebt, setEditingDebt] = useState<Debt | null>(null);
 
@@ -76,6 +79,7 @@ export const Dashboard = () => {
             lastActivity: Date;
             lastSnippet: string;
             linkedUserId?: string;
+            hasUnreadActivity?: boolean;
         }>();
 
         const totalsByCurrency: Record<string, { receivables: number, payables: number, net: number, currency: string }> = {};
@@ -142,24 +146,60 @@ export const Dashboard = () => {
 
             // Initialize contact entry if it doesn't exist
             if (!contactMap.has(otherId)) {
+                // Check in contactsMap for Activity Feed Metadata
+                const contactMeta = contactsMap.get(otherId) || contactsMap.get(resolution.linkedUserId || '');
+                // Note: contactsMap is keyed by ID? No, useContacts implementation maps by ID.
+                // Assuming contactsMap is Map<string, Contact>.
+                // We prioritize metadata from Contact object.
+
+                let snippet = '';
+                let activityDate = new Date(0);
+                let unread = false;
+
+                if (contactMeta) {
+                    if (contactMeta.lastActivityMessage) snippet = contactMeta.lastActivityMessage;
+                    if (contactMeta.lastActivityAt) activityDate = contactMeta.lastActivityAt.toDate();
+                    if (contactMeta.hasUnreadActivity) unread = contactMeta.hasUnreadActivity;
+                }
+
                 contactMap.set(otherId, {
                     name: displayName,
                     source: resolution.source, // Store the source
                     balance: 0,
-                    lastActivity: new Date(0),
-                    lastSnippet: '',
-                    linkedUserId: resolution.linkedUserId
+                    lastActivity: activityDate,
+                    lastSnippet: snippet,
+                    linkedUserId: resolution.linkedUserId,
+                    hasUnreadActivity: unread
                 });
             }
 
             const contact = contactMap.get(otherId)!;
             const debtDate = d.createdAt.toDate();
 
-            // Update last activity
-            if (debtDate > contact.lastActivity) {
-                contact.lastActivity = debtDate;
-                const action = d.status === 'PAID' ? 'Ödendi' : (isLender ? 'Borç verdin' : 'Borç aldın');
-                contact.lastSnippet = `${action} • ${formatDistanceToNow(debtDate, { addSuffix: true, locale: tr })}`;
+            // Fallback Activity Calculation (if no metadata or newer debt exists found)
+            // If the debt is newer than the stored activity (from contact metadata or previous iteration), update date.
+            // But we prefer the Metadata Message if available and newer?
+            // Actually, metadata IS the source of truth for the "Feed".
+            // But if metadata is missing (legacy), we fall back to debt date/snippet.
+
+            // Logic: If lastSnippet is empty (no metadata), use debt snippet.
+            // If debtDate > contact.lastActivity, update date?
+            // If we have metadata, lastActivity should be accurate.
+
+            if (!contact.lastSnippet || debtDate > contact.lastActivity) {
+                // Only override if we don't have a metadata-based snippet, or if this debt is surprisingly newer (shouldn't happen if syncing works)
+                // Actually, let's presume metadata is king for "Feed". 
+                // But for "Last activity date" sorting, we want the REAL latest date.
+
+                if (debtDate > contact.lastActivity) {
+                    contact.lastActivity = debtDate;
+                }
+
+                // Only generate snippet if we don't have one from metadata
+                if (!contact.lastSnippet) {
+                    const action = d.status === 'PAID' ? 'Ödendi' : (isLender ? 'Borç verdin' : 'Borç aldın');
+                    contact.lastSnippet = `${action} • ${formatDistanceToNow(debtDate, { addSuffix: true, locale: tr })}`;
+                }
             }
 
             // Update Contact Balance (Always converted to TRY for unified list)
@@ -184,7 +224,8 @@ export const Dashboard = () => {
                 lastActionSnippet: data.lastSnippet,
                 status: data.source === 'contact' ? 'contact' : (data.source === 'user' && id.length > 20 ? 'system' : 'none'),
                 // photoURL: undefined 
-                linkedUserId: data.linkedUserId
+                linkedUserId: data.linkedUserId,
+                hasUnreadActivity: data.hasUnreadActivity
             } as ContactSummary;
         }).filter(c => Math.abs(c.netBalance) > 0.01);
 

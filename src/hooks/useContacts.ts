@@ -33,13 +33,13 @@ export const useContacts = () => {
         return contacts.some(c => c.phoneNumber === identifier || c.linkedUserId === identifier);
     };
 
-    // Dictionary for O(1) lookup: key = E.164 Phone Number
+    // Map for O(1) lookup by ID, Linked User ID, or Phone Number
     const contactsMap = useMemo(() => {
-        const map: Record<string, Contact> = {};
+        const map = new Map<string, Contact>();
         contacts.forEach(c => {
-            if (c.phoneNumber) {
-                map[c.phoneNumber] = c;
-            }
+            map.set(c.id, c); // Doc ID
+            if (c.phoneNumber) map.set(c.phoneNumber, c);
+            if (c.linkedUserId) map.set(c.linkedUserId, c);
         });
         return map;
     }, [contacts]);

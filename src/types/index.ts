@@ -32,6 +32,12 @@ export interface Contact {
     phoneNumber: string; // E.164 format strictly (e.g., +905551234567)
     linkedUserId?: string; // If matched with a system user
     createdAt: Timestamp;
+
+    // Activity Feed Fields
+    lastActivityMessage?: string;
+    lastActivityAt?: Timestamp;
+    hasUnreadActivity?: boolean;
+    lastActorId?: string;
 }
 
 export type DebtStatus = 'PENDING' | 'ACTIVE' | 'PARTIALLY_PAID' | 'PAID' | 'REJECTED' | 'HIDDEN' | 'REJECTED_BY_RECEIVER' | 'AUTO_HIDDEN' | 'APPROVED';

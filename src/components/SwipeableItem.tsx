@@ -12,6 +12,7 @@ interface SwipeableItemProps {
     deleteColor?: string;
     EditIcon?: React.ElementType;
     DeleteIcon?: React.ElementType;
+    contentClassName?: string;
 }
 
 export const SwipeableItem: React.FC<SwipeableItemProps> = ({
@@ -22,7 +23,8 @@ export const SwipeableItem: React.FC<SwipeableItemProps> = ({
     editColor = "bg-orange-500", // Default to Orange for Edit
     deleteColor = "bg-red-500",
     EditIcon = Edit2,
-    DeleteIcon = Trash2
+    DeleteIcon = Trash2,
+    contentClassName = "bg-surface" // Default to surface
 }) => {
     const controls = useAnimation();
     const [isMobile, setIsMobile] = useState(false);
@@ -83,7 +85,7 @@ export const SwipeableItem: React.FC<SwipeableItemProps> = ({
                 dragElastic={0.7}
                 onDragEnd={handleDragEnd}
                 animate={controls}
-                className="relative bg-surface z-10"
+                className={clsx("relative z-10", contentClassName)}
                 whileTap={canDrag ? { cursor: "grabbing" } : {}}
                 style={{ touchAction: "pan-y" }}
             >

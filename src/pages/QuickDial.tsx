@@ -108,7 +108,6 @@ export const QuickDial = () => {
         dueDate?: Date,
         installments?: any[],
         canBorrowerAddPayment?: boolean,
-        requestApproval?: boolean,
         initialPayment?: number
     ) => {
         if (!user) return;
@@ -124,7 +123,6 @@ export const QuickDial = () => {
             dueDate,
             installments,
             canBorrowerAddPayment,
-            requestApproval,
             initialPayment || 0
         );
         setShowCreateModal(false);

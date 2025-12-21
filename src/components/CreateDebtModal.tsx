@@ -27,7 +27,6 @@ interface CreateDebtModalProps {
         dueDate?: Date,
         installments?: Installment[],
         canBorrowerAddPayment?: boolean,
-        requestApproval?: boolean,
         initialPayment?: number
     ) => Promise<void>;
     initialPhoneNumber?: string;
@@ -358,8 +357,6 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                 dueDate ? new Date(dueDate) : undefined,
                 generatedInstallments,
                 canBorrowerAddPayment,
-                canBorrowerAddPayment,
-                // true, // requestApproval removed
                 numDownPayment // Pass Initial Payment
             );
 

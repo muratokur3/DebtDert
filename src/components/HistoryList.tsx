@@ -1,9 +1,10 @@
 import type { PaymentLog } from '../types';
+import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { formatCurrency } from '../utils/format';
-import { History, Wallet, Check, X, Clock } from 'lucide-react';
-import { confirmPayment, rejectPayment } from '../services/db';
+import { History, Wallet, Check, X, Clock, MoreVertical } from 'lucide-react';
+import { rejectPayment } from '../services/db';
 import { useAuth } from '../hooks/useAuth';
 import clsx from 'clsx';
 import { SwipeableItem } from './SwipeableItem';
@@ -21,24 +22,32 @@ export const HistoryList: React.FC<HistoryListProps> = ({ logs, currency, isLend
     const { showAlert, showConfirm } = useModal();
     const { user } = useAuth();
 
-    const handleConfirm = async (paymentId: string) => {
-        if (!user) return;
-        const confirmed = await showConfirm("Ödeme Onayı", "Bu ödemeyi onaylıyor musunuz?");
-        if (!confirmed) return;
-        try {
-            await confirmPayment(debtId, paymentId, user.uid);
-            showAlert("Başarılı", "Ödeme onaylandı.", "success");
-        } catch (error) {
-            console.error(error);
-            showAlert("Hata", "İşlem başarısız veya yetkiniz yok.", "error");
+
+
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+    const toggleMenu = (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (openMenuId === id) {
+            setOpenMenuId(null);
+        } else {
+            setOpenMenuId(id);
         }
     };
 
+    // Close menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = () => setOpenMenuId(null);
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
+    }, []);
+
     const handleReject = async (paymentId: string) => {
+        if (!user) return;
         const confirmed = await showConfirm("Ödeme Reddi", "Bu ödemeyi reddetmek istediğinize emin misiniz?");
         if (!confirmed) return;
         try {
-            await rejectPayment(debtId, paymentId);
+            await rejectPayment(debtId, paymentId, user.uid);
             showAlert("Reddedildi", "Ödeme reddedildi.", "success");
         } catch (error) {
             console.error(error);
@@ -55,6 +64,13 @@ export const HistoryList: React.FC<HistoryListProps> = ({ logs, currency, isLend
         );
     }
 
+    const canReject = (log: PaymentLog) => {
+        if (!user) return false;
+        // Allow rejecting if I didn't perform it, and it's not already rejected.
+        // Also ensure it's a payment type.
+        return log.performedBy !== user.uid && log.status !== 'REJECTED' && (log.type === 'PAYMENT' || log.type === 'PAYMENT_DECLARATION');
+    };
+
     return (
         <div className="space-y-4">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2">
@@ -62,89 +78,97 @@ export const HistoryList: React.FC<HistoryListProps> = ({ logs, currency, isLend
                 İşlem Geçmişi
             </h3>
             <div className="space-y-3">
-                {logs.map((log) => (
-                    <SwipeableItem
-                        key={log.id}
-                        onSwipeRight={isLender && log.status === 'PENDING' ? () => handleConfirm(log.id) : undefined}
-                        onSwipeLeft={isLender && log.status === 'PENDING' ? () => handleReject(log.id) : undefined}
-                        editColor="bg-green-500"
-                        deleteColor="bg-red-500"
-                        EditIcon={Check}
-                        DeleteIcon={X}
-                        className="mb-3"
-                    >
-                        <div className={clsx(
-                            "p-3 rounded-lg border",
-                            log.status === 'PENDING' ? "bg-yellow-50 border-yellow-100" : "bg-gray-50 border-gray-100"
-                        )}>
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-3">
-                                    <div className={clsx(
-                                        "p-2 rounded-full shadow-sm",
-                                        log.type === 'PAYMENT' ? "bg-green-100 text-green-600" :
-                                            log.type === 'PAYMENT_DECLARATION' ? "bg-yellow-100 text-yellow-600" : "bg-white text-blue-600"
-                                    )}>
-                                        <Wallet size={16} />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-900">
-                                            {log.type === 'INITIAL_CREATION' ? 'Borç Oluşturuldu' :
-                                                log.type === 'PAYMENT' ? 'Ödeme Yapıldı' :
-                                                    log.type === 'PAYMENT_DECLARATION' ? 'Ödeme Bildirimi' : 'Not Eklendi'}
-                                        </p>
-                                        <p className="text-xs text-gray-500">
-                                            {log.timestamp ? format(log.timestamp.toDate(), 'd MMM HH:mm', { locale: tr }) : ''}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    {log.amountPaid && (
-                                        <p className={clsx(
-                                            "font-semibold",
-                                            log.status === 'PENDING' ? "text-yellow-600" : "text-green-600"
+                {logs.map((log) => {
+                    const isMine = log.performedBy === user?.uid;
+                    return (
+                        <SwipeableItem
+                            key={log.id}
+                            onSwipeLeft={canReject(log) ? () => handleReject(log.id) : undefined}
+                            deleteColor="bg-red-500"
+                            DeleteIcon={X}
+                            className="mb-3"
+                            contentClassName="bg-background" // Match page bg
+                        >
+                            <div className={clsx(
+                                "p-3 rounded-lg border relative shadow-sm w-[90%] md:w-[85%]", // Width constraint
+                                isMine ? "ml-auto bg-green-50/50 border-green-200" : "mr-auto bg-white border-slate-200", // Alignment & Color
+                                log.status === 'REJECTED' && "bg-red-50 border-red-200 opacity-75" // Rejected override
+                            )}>
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-3">
+                                        <div className={clsx(
+                                            "p-2 rounded-full shadow-sm",
+                                            log.type === 'PAYMENT' ? "bg-green-100 text-green-600" :
+                                                log.type === 'PAYMENT_DECLARATION' ? "bg-green-100 text-green-600" : "bg-white text-blue-600" // Unified color for payment
                                         )}>
-                                            +{formatCurrency(log.amountPaid, currency)}
-                                        </p>
-                                    )}
+                                            <Wallet size={16} />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-900">
+                                                {log.type === 'INITIAL_CREATION' ? 'Borç Oluşturuldu' :
+                                                    (log.type === 'PAYMENT' || log.type === 'PAYMENT_DECLARATION') ? 'Ödeme' : 'Not Eklendi'}
+                                            </p>
+                                            <p className="text-xs text-gray-500">
+                                                {log.timestamp ? format(log.timestamp.toDate(), 'd MMM HH:mm', { locale: tr }) : ''}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Right Side: Amount + Menu */}
+                                    <div className="flex items-center gap-2">
+                                        {log.amountPaid && (
+                                            <p className={clsx(
+                                                "font-semibold",
+                                                log.status === 'REJECTED' ? "text-gray-400 line-through" : "text-green-600"
+                                            )}>
+                                                +{formatCurrency(log.amountPaid, currency)}
+                                            </p>
+                                        )}
+
+                                        {/* Action Menu Trigger - only if rejectable */}
+                                        {canReject(log) && (
+                                            <div className="relative">
+                                                <button
+                                                    onClick={(e) => toggleMenu(log.id, e)}
+                                                    className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-200 transition-colors"
+                                                >
+                                                    <MoreVertical size={16} />
+                                                </button>
+
+                                                {/* Dropdown Menu */}
+                                                {openMenuId === log.id && (
+                                                    <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-lg border border-gray-100 z-10 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleReject(log.id);
+                                                                setOpenMenuId(null);
+                                                            }}
+                                                            className="w-full text-left px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                                        >
+                                                            <X size={14} /> Reddet / İptal
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
+
+                                {log.note && (
+                                    <p className="text-xs text-gray-500 mb-2 pl-11">{log.note}</p>
+                                )}
+
+                                {/* Status Indicator (Only if Rejected) - Button removed */}
+                                {log.status === 'REJECTED' && (
+                                    <div className="pl-11 mt-1 text-xs text-red-500 font-medium flex items-center gap-1">
+                                        <X size={14} /> Reddedildi
+                                    </div>
+                                )}
                             </div>
-
-                            {log.note && (
-                                <p className="text-xs text-gray-500 mb-2 pl-11">{log.note}</p>
-                            )}
-
-                            {log.status === 'PENDING' && (
-                                <div className="pl-11 mt-2">
-                                    {isLender ? (
-                                        <div className="hidden md:flex gap-2">
-                                            <button
-                                                onClick={() => handleConfirm(log.id)}
-                                                className="flex items-center gap-1 px-3 py-1.5 bg-green-500 text-white rounded-lg text-xs font-bold hover:bg-green-600 transition-colors"
-                                            >
-                                                <Check size={14} /> Onayla
-                                            </button>
-                                            <button
-                                                onClick={() => handleReject(log.id)}
-                                                className="flex items-center gap-1 px-3 py-1.5 bg-white text-red-500 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-50 transition-colors"
-                                            >
-                                                <X size={14} /> Reddet
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="flex items-center gap-1 text-xs text-yellow-600 font-medium">
-                                            <Clock size={14} /> Onay Bekliyor
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            {log.status === 'REJECTED' && (
-                                <div className="pl-11 mt-1 text-xs text-red-500 font-medium flex items-center gap-1">
-                                    <X size={14} /> Reddedildi
-                                </div>
-                            )}
-                        </div>
-                    </SwipeableItem>
-                ))}
+                        </SwipeableItem>
+                    );
+                })}
             </div>
         </div>
     );

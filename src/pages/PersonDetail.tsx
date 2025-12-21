@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useDebts } from '../hooks/useDebts';
 import { useContactName } from '../hooks/useContactName';
 import { ArrowLeft, Phone, MessageCircle, Trash2, Edit2, X, MoreVertical, Ban, UserPlus, VolumeX, Volume2 } from 'lucide-react';
-import { searchUserByPhone, getContacts, updateContact, addContact, deleteContact, muteUser, unmuteUser } from '../services/db';
+import { searchUserByPhone, getContacts, updateContact, addContact, deleteContact, muteUser, unmuteUser, markContactAsRead } from '../services/db';
 import { blockUser, isUserBlocked, unblockUser } from '../services/blockService'; // Import block services
 import { Avatar } from '../components/Avatar';
 import { DebtCard } from '../components/DebtCard';
@@ -53,6 +53,13 @@ export const PersonDetail = () => {
         }
         return null;
     };
+
+    // Mark as Read on Mount
+    useEffect(() => {
+        if (user && id) {
+            markContactAsRead(user.uid, id);
+        }
+    }, [user, id]);
 
     // Check block & mute status
     useEffect(() => {

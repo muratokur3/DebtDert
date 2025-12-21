@@ -18,7 +18,7 @@ export const useContactName = () => {
         // contactsMap is keyed by E.164 phone number.
 
         // Optimistic O(1) lookup
-        const contactMatch = contactsMap[identifier];
+        const contactMatch = contactsMap.get(identifier);
 
         if (contactMatch) {
             return {

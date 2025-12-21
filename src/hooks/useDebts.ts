@@ -19,7 +19,7 @@ export const useDebts = (includeDeleted = false) => {
             return;
         }
 
-        const unsubscribe = subscribeToUserDebts(user.uid, (data) => {
+        const unsubscribe = subscribeToUserDebts(user.uid, (data: Debt[]) => {
             let processed = data;
             if (!includeDeleted) {
                 processed = data.filter(d => !d.isDeleted);

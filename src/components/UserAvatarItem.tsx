@@ -9,9 +9,10 @@ interface UserAvatarItemProps {
     onClick?: () => void;
     actionButton?: React.ReactNode;
     className?: string;
+    isUnread?: boolean; // NEW PROP
 }
 
-export const UserAvatarItem: React.FC<UserAvatarItemProps> = React.memo(({ profile, onClick, actionButton, className }) => {
+export const UserAvatarItem: React.FC<UserAvatarItemProps> = React.memo(({ profile, onClick, actionButton, className, isUnread }) => {
     const { isSystemUser, isContact, displayName, secondaryText, photoURL, uid } = profile;
 
     // determine visual status
@@ -28,28 +29,27 @@ export const UserAvatarItem: React.FC<UserAvatarItemProps> = React.memo(({ profi
             )}
         >
             {/* SMART AVATAR (Handles Fetch, Colors, Icons) */}
-            <div className={opacityClass}>
+            <div className={clsx("relative", opacityClass)}>
                 <Avatar
                     name={displayName}
                     photoURL={photoURL}
                     uid={uid}
                     size="lg" // UserAvatarItem uses Lg (12/12 = 3rem = 48px)
                     status={status}
-                    className={ // Reset explicit border here as Avatar has it, but UserAvatarItem had specific logic?
-                        // Actually Avatar logic is now Standard.
-                        // However, UserAvatarItem had "Selectable" visual states.
-                        // Let's rely on standard Avatar, but checking sizes.
-                        // UserAvatarItem old size was w-12 h-12 = 48px. 
-                        // Avatar lg is w-12 h-12. Perfect.
-                        ""
-                    }
+                    className=""
                 />
+                {isUnread && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-4 w-4 bg-blue-500 border-2 border-white dark:border-slate-800"></span>
+                    </span>
+                )}
             </div>
 
             {/* TEXT CONTENT */}
             <div className={clsx("flex-1 min-w-0 flex flex-col justify-center", opacityClass)}>
                 <div className="flex items-center gap-1.5">
-                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 truncate text-base leading-tight">
+                    <h4 className={clsx("font-semibold text-gray-900 dark:text-gray-100 truncate text-base leading-tight", isUnread && "font-bold text-gray-950 dark:text-white")}>
                         {displayName}
                     </h4>
                     {/* Inline Verification Check for System Users */}
@@ -58,7 +58,7 @@ export const UserAvatarItem: React.FC<UserAvatarItemProps> = React.memo(({ profi
                     )}
                 </div>
 
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate font-medium">
+                <p className={clsx("text-xs truncate font-medium", isUnread ? "text-blue-600 dark:text-blue-400 font-semibold" : "text-gray-500 dark:text-gray-400")}>
                     {secondaryText}
                 </p>
             </div>

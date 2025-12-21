@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDebtDetails } from '../hooks/useDebtDetails';
 import { usePayment } from '../hooks/usePayment';
-import { declarePayment, softDeleteDebt, updateDebt, deletePendingDebt, forgiveDebt } from '../services/db'; // Added new services
+import { addPayment, softDeleteDebt, updateDebt, deletePendingDebt, forgiveDebt } from '../services/db'; // Added new services
 import { checkBlockStatus } from '../services/blockService'; // Import block check
 import { useAuth } from '../hooks/useAuth';
 import { HistoryList } from '../components/HistoryList';
@@ -54,7 +54,7 @@ export const DebtDetail = () => {
 
         // Logic for Pending Deletion (Hard Delete) vs Active (Soft/Forgive)
         if (debt.status === 'PENDING' && debt.createdBy === user.uid) {
-             const confirmed = await showConfirm(
+            const confirmed = await showConfirm(
                 "Borcu İptal Et",
                 "Bu bekleyen borç kaydını tamamen silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
                 "warning"
@@ -65,8 +65,8 @@ export const DebtDetail = () => {
                 showAlert("Başarılı", "Borç kaydı silindi.", "success");
             }
         } else {
-             // Fallback to soft delete for others or use Archive logic
-             const confirmed = await showConfirm(
+            // Fallback to soft delete for others or use Archive logic
+            const confirmed = await showConfirm(
                 "Arşivle",
                 "Bu borç kaydını arşivlemek/gizlemek istediğinize emin misiniz?",
                 "info"
@@ -80,12 +80,12 @@ export const DebtDetail = () => {
     };
 
     const handleForgive = async () => {
-         if (!debt || !user) return;
-         if (isBlocked) {
-             showAlert("Hata", "Engellenen kullanıcıyla işlem yapılamaz.", "error");
-             return;
-         }
-         const confirmed = await showConfirm(
+        if (!debt || !user) return;
+        if (isBlocked) {
+            showAlert("Hata", "Engellenen kullanıcıyla işlem yapılamaz.", "error");
+            return;
+        }
+        const confirmed = await showConfirm(
             "Borcu Sil / Hibe Et",
             "Bu borcu ödendi olarak işaretleyip kapatmak istediğinize emin misiniz? Kalan tutar sıfırlanacak.",
             "warning"
@@ -98,8 +98,8 @@ export const DebtDetail = () => {
 
     const handleUpdate = async (debtId: string, data: Partial<Debt>) => {
         if (isBlocked) {
-             showAlert("Hata", "Engellenen kullanıcıyla işlem yapılamaz.", "error");
-             return;
+            showAlert("Hata", "Engellenen kullanıcıyla işlem yapılamaz.", "error");
+            return;
         }
         await updateDebt(debtId, data);
         showAlert("Başarılı", "Borç güncellendi.", "success");
@@ -108,18 +108,28 @@ export const DebtDetail = () => {
     const handlePayment = async (amount: number, note: string) => {
         if (!debt || !user) return;
         if (isBlocked) {
-             showAlert("Hata", "Engellenen kullanıcıyla işlem yapılamaz.", "error");
-             return;
+            showAlert("Hata", "Engellenen kullanıcıyla işlem yapılamaz.", "error");
+            return;
         }
 
-        if (isBorrower && !debt.canBorrowerAddPayment) {
-            await declarePayment(debt.id, amount, note, user.uid, selectedInstallmentId);
-            showAlert("Bildirim Gönderildi", "Ödeme bildirimi gönderildi. Alacaklı onayladığında düşülecektir.", "info");
-        } else {
-            // Lender OR Borrower with permission
-            await pay(debt.id, amount, note);
-            showAlert("Başarılı", "Ödeme eklendi.", "success");
+        // SECURITY: Check Permission
+        const isCreator = user.uid === debt.createdBy;
+        const canAdd = isCreator || debt.canBorrowerAddPayment;
+
+        if (!canAdd) {
+            showAlert("İzin Yok", "Bu borç için ödeme girişi alacaklı tarafından kapatılmıştır.", "error");
+            return;
         }
+
+        // If permission is granted (canAdd is true), then proceed.
+        // Asymmetric Debt Model (Instant Validity):
+        // Both lender and borrower (if permitted) add payment INSTANTLY.
+        // No more "declarePayment" with approval.
+        // We use addPayment to wrap logic.
+
+        await addPayment(debt.id, amount, note, user.uid, selectedInstallmentId);
+        showAlert("Başarılı", "Ödeme eklendi.", "success");
+
         setIsPaymentModalOpen(false);
         setSelectedInstallmentId(undefined);
         setPaymentInitialAmount(undefined);
@@ -128,19 +138,58 @@ export const DebtDetail = () => {
 
     const handleInstallmentPayment = (amount: number, note: string, installmentId: string) => {
         if (isBlocked) {
-             showAlert("Hata", "Engellenen kullanıcıyla işlem yapılamaz.", "error");
-             return;
+            showAlert("Hata", "Engellenen kullanıcıyla işlem yapılamaz.", "error");
+            return;
         }
+
+        // SECURITY: Check Permission
+        const isCreator = user?.uid === debt?.createdBy;
+        const canAdd = isCreator || debt?.canBorrowerAddPayment;
+
+        if (!canAdd) {
+            showAlert("İzin Yok", "Bu borç için ödeme girişi alacaklı tarafından kapatılmıştır.", "error");
+            return;
+        }
+
         setSelectedInstallmentId(installmentId);
         setPaymentInitialAmount(amount);
         setPaymentInitialNote(note);
         setIsPaymentModalOpen(true);
     };
 
+    // Listen for FAB Action (Global "Add Payment" Button)
+    useEffect(() => {
+        const handleFabTrigger = () => {
+            if (!debt || !user) return; // Ensure debt and user are available
+
+            // SECURITY Check in FAB
+            const isCreator = user.uid === debt.createdBy;
+            const canAdd = isCreator || debt.canBorrowerAddPayment;
+
+            if (debt.status !== 'PAID' && !isBlocked) {
+                if (!canAdd) {
+                    showAlert("İzin Yok", "Bu borç için ödeme girişi alacaklı tarafından kapatılmıştır.", "error");
+                    return;
+                }
+                setPaymentInitialAmount(undefined);
+                setPaymentInitialNote('');
+                setIsPaymentModalOpen(true);
+            }
+        };
+
+        window.addEventListener('trigger-fab-action', handleFabTrigger);
+        return () => window.removeEventListener('trigger-fab-action', handleFabTrigger);
+    }, [debt, isBlocked, user, showAlert]); // Added showAlert to dependencies
+
+    // ... existing loading / null checks ...
+
     if (loading) return <div className="flex justify-center items-center h-screen">Yükleniyor...</div>;
     if (!debt) return <div className="flex justify-center items-center h-screen">Borç bulunamadı</div>;
 
     const progress = ((debt.originalAmount - debt.remainingAmount) / debt.originalAmount) * 100;
+
+    // determine title
+    const headerTitle = debt.note || "Borç Detayı";
 
     return (
         <div className="min-h-full bg-background transition-colors duration-200">
@@ -155,33 +204,18 @@ export const DebtDetail = () => {
                             <ArrowLeft size={24} className="text-text-secondary" />
                         </button>
                         <div>
+                            {/* CLEANUP: User names removed, showed Note/Desc instead */}
                             <h1 className="text-lg font-semibold text-text-primary truncate max-w-[200px]">
-                                {debt.borrowerName} & {debt.lenderName}
+                                {headerTitle}
                             </h1>
-                            {/* Communication Buttons */}
-                            {(isLender || isBorrower) && !isBlocked && (
-                                <div className="flex items-center gap-2 mt-1">
-                                    <a
-                                        href={`https://wa.me/${(isLender ? debt.borrowerId : debt.lenderId).replace(/\D/g, '')}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-green-600 hover:text-green-700 transition-colors"
-                                    >
-                                        <MessageCircle size={16} />
-                                    </a>
-                                    <a
-                                        href={`tel:${isLender ? debt.borrowerId : debt.lenderId}`}
-                                        className="text-blue-600 hover:text-blue-700 transition-colors"
-                                    >
-                                        <Phone size={16} />
-                                    </a>
-                                </div>
-                            )}
+                            <p className="text-xs text-text-secondary">
+                                {debt.borrowerName} & {debt.lenderName}
+                            </p>
                         </div>
                     </div>
                     <div className="flex gap-1">
-                         {/* Forgive Button (Only Lender can forgive Active Debts) */}
-                         {isLender && debt.status !== 'PENDING' && debt.remainingAmount > 0 && !isBlocked && (
+                        {/* Forgive Button (Only Lender can forgive Active Debts) */}
+                        {isLender && debt.status !== 'PENDING' && debt.remainingAmount > 0 && !isBlocked && (
                             <button
                                 onClick={handleForgive}
                                 className="p-2 text-green-600 hover:bg-green-50 rounded-full"
@@ -222,11 +256,11 @@ export const DebtDetail = () => {
                 {/* Blocked Banner */}
                 {isBlocked && (
                     <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 flex items-center gap-3">
-                         <Ban className="text-red-600 shrink-0" size={24} />
-                         <div>
+                        <Ban className="text-red-600 shrink-0" size={24} />
+                        <div>
                             <h3 className="font-bold text-red-700 dark:text-red-300">İşlemler Kısıtlandı</h3>
                             <p className="text-sm text-red-600 dark:text-red-400">Bu işlem engellenen bir kullanıcıya ait olduğu için ödeme, düzenleme ve iletişim özellikleri devre dışı bırakılmıştır.</p>
-                         </div>
+                        </div>
                     </div>
                 )}
 
@@ -258,25 +292,7 @@ export const DebtDetail = () => {
                     </div>
                 </div>
 
-                {/* Action Buttons */}
-                {debt.status !== 'PAID' && (
-                    <button
-                        onClick={() => {
-                            setPaymentInitialAmount(undefined);
-                            setPaymentInitialNote('');
-                            setIsPaymentModalOpen(true);
-                        }}
-                        disabled={isBlocked}
-                        className={clsx(
-                            "w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all",
-                            isBlocked
-                                ? "bg-gray-300 dark:bg-slate-700 text-gray-500 cursor-not-allowed shadow-none"
-                                : "bg-blue-600 text-white hover:bg-blue-700 active:scale-95"
-                        )}
-                    >
-                        {isBlocked ? 'İşlem Kısıtlı' : (isBorrower && !debt.canBorrowerAddPayment ? 'Ödeme Bildir' : 'Ödeme Ekle')}
-                    </button>
-                )}
+                {/* REMOVED INLINE ACTION BUTTON - It is now the FAB */}
 
                 {/* Installments */}
                 {debt.installments && debt.installments.length > 0 && (

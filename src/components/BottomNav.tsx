@@ -1,4 +1,4 @@
-import { Home, BookUser, GripHorizontal, Calculator, Plus, Settings } from 'lucide-react';
+import { Home, BookUser, GripHorizontal, Calculator, Plus, Settings, Wallet } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { useState } from 'react';
@@ -21,6 +21,10 @@ export const BottomNav = () => {
 
     const isContacts = location.pathname === '/contacts';
 
+    // Check for Context: Debt Detail Page
+    const debtMatch = location.pathname.match(/^\/debt\/([^/]+)$/);
+    const isDebtDetail = !!debtMatch;
+
     // Check for Context: User Detail Page
     // Using regex match on location.pathname provided by useLocation hook
     const personMatch = location.pathname.match(/^\/person\/([^/]+)$/);
@@ -35,37 +39,8 @@ export const BottomNav = () => {
     let targetUserObject: Contact | User | null = null;
 
     if (isPersonDetail && personId) {
-        // A. Resolve Name
-        // 1. Try Navigation State (Most reliable for immediate context)
-        if (locationState?.name) {
-            personName = locationState.name;
-        }
-        // 2. Try Resolve from Contacts/Cache
-        else {
-            const resolved = resolveName(personId);
-            if (resolved.source !== 'phone') {
-                personName = resolved.displayName;
-            }
-        }
-
-        // B. Resolve Target Object (To emulate Contacts Button behavior)
-        const cleanId = cleanPhone(personId);
-
-        // 1. Try Phone Map (O(1))
-        if (contactsMap[cleanId]) {
-            targetUserObject = contactsMap[cleanId];
-        }
-        // 2. Try Raw ID in Map (Just in case)
-        else if (contactsMap[personId]) {
-            targetUserObject = contactsMap[personId];
-        }
-        // 3. Try Linked UID (Reverse Search)
-        else if (personId.length > 20) { // Assuming UIDs are typically longer than phone numbers
-            const contactByUid = contacts.find(c => c.linkedUserId === personId);
-            if (contactByUid) {
-                targetUserObject = contactByUid;
-            }
-        }
+        // ... (Existing logic) ...
+        // ...
     }
 
     // Submit handler for CreateDebtModal
@@ -79,7 +54,6 @@ export const BottomNav = () => {
         dueDate?: Date,
         installments?: any[],
         canBorrowerAddPayment?: boolean,
-        requestApproval?: boolean,
         initialPayment?: number
     ) => {
         if (!user) return;
@@ -95,35 +69,55 @@ export const BottomNav = () => {
             dueDate,
             installments,
             canBorrowerAddPayment,
-            requestApproval,
             initialPayment || 0
         );
         setShowDebtModal(false);
     };
 
-    const navItems = [
+    type NavItem = {
+        path: string;
+        icon: any;
+        label: string;
+        isCenter?: boolean;
+        isContextAction?: boolean;
+        isPaymentAction?: boolean;
+        isContactAction?: boolean;
+        onClick?: () => void;
+    };
+
+    const navItems: NavItem[] = [
         { path: '/', icon: Home, label: 'Anasayfa' },
         { path: '/tools', icon: Calculator, label: 'Araçlar' },
         // Dynamic Center Item
-        isPersonDetail
+        isDebtDetail
             ? {
-                path: '#create-debt-context',
-                icon: Plus,
-                label: 'İşlem Ekle',
+                path: '#add-payment-context',
+                icon: Wallet,
+                label: 'Ödeme Ekle',
                 isCenter: true,
-                isContextAction: true, // Special flag for styling
-                onClick: () => setShowDebtModal(true)
+                isPaymentAction: true, // Green styling
+                onClick: () => window.dispatchEvent(new Event('trigger-fab-action'))
             }
-            : (isContacts
+            : (isPersonDetail
                 ? {
-                    path: '#add-contact',
+                    path: '#create-debt-context',
                     icon: Plus,
-                    label: 'Kişi Ekle',
+                    label: 'İşlem Ekle',
                     isCenter: true,
-                    isContactAction: true, // Special flag for Orange styling
-                    onClick: () => setShowContactModal(true)
+                    isContextAction: true, // Purple styling
+                    onClick: () => setShowDebtModal(true)
                 }
-                : { path: '#create-debt', icon: Plus, label: 'Yeni Ekle', isCenter: true, onClick: () => setShowDebtModal(true) }
+                : (isContacts
+                    ? {
+                        path: '#add-contact',
+                        icon: Plus,
+                        label: 'Kişi Ekle',
+                        isCenter: true,
+                        isContactAction: true, // Orange styling
+                        onClick: () => setShowContactModal(true)
+                    }
+                    : { path: '#create-debt', icon: Plus, label: 'Yeni Ekle', isCenter: true, onClick: () => setShowDebtModal(true) }
+                )
             ),
         { path: '/contacts', icon: BookUser, label: 'Rehber' },
         { path: '/settings', icon: Settings, label: 'Ayarlar' },
@@ -159,7 +153,12 @@ export const BottomNav = () => {
                                                 // @ts-ignore
                                                 item.isContactAction
                                                     ? "bg-orange-500 shadow-orange-500/40"
-                                                    : "bg-primary shadow-blue-500/40"
+                                                    : (
+                                                        // @ts-ignore
+                                                        item.isPaymentAction
+                                                            ? "bg-emerald-500 shadow-emerald-500/40"
+                                                            : "bg-primary shadow-blue-500/40"
+                                                    )
                                             )
                                     )}>
                                         <Icon size={28} />

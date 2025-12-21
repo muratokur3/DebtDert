@@ -207,7 +207,6 @@ export const Contacts = () => {
         dueDate?: Date,
         installments?: any[],
         canBorrowerAddPayment?: boolean,
-        requestApproval?: boolean,
         initialPayment?: number
     ) => {
         if (!user) return;
@@ -223,7 +222,6 @@ export const Contacts = () => {
             dueDate,
             installments,
             canBorrowerAddPayment,
-            requestApproval,
             initialPayment || 0
         );
         setShowDebtModal(false);

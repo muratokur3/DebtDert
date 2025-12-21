@@ -589,15 +589,22 @@ export const PersonDetail = () => {
                 <div className="space-y-3">
                     <h3 className="font-semibold text-text-primary px-1">Hareketler</h3>
                     {personDebts.length > 0 ? (
-                        personDebts.map(debt => (
-                            <DebtCard
-                                key={debt.id}
-                                debt={debt}
-                                currentUserId={user?.uid || ''}
-                                onClick={() => navigate(`/debt/${debt.id}`)}
-                                disabled={isBlocked} // Pass blocked status to disable interactions
-                            />
-                        ))
+                        personDebts.map(debt => {
+                            const isMyEntry = debt.createdBy === user?.uid;
+                            return (
+                                <div key={debt.id} className={clsx("flex w-full", isMyEntry ? "justify-end" : "justify-start")}>
+                                    <div className="w-[85%]">
+                                        <DebtCard
+                                            debt={debt}
+                                            currentUserId={user?.uid || ''}
+                                            onClick={() => navigate(`/debt/${debt.id}`)}
+                                            disabled={isBlocked}
+                                            variant="chat"
+                                        />
+                                    </div>
+                                </div>
+                            );
+                        })
                     ) : (
                         <div className="text-center py-10 text-text-secondary opacity-60">
                             <p>Henüz kayıtlı işlem yok.</p>

@@ -15,9 +15,10 @@ interface DebtCardProps {
     onClick: () => void;
     otherPartyStatus?: 'none' | 'system' | 'contact';
     disabled?: boolean; // New prop for blocked state
+    variant?: 'default' | 'chat'; // New prop for Chat Layout
 }
 
-export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick, otherPartyStatus = 'none', disabled = false }) => {
+export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick, otherPartyStatus = 'none', disabled = false, variant = 'default' }) => {
     // Live Name Resolution (Scenario 4: Update Propagation)
     // We prioritize the Contact Book name over the Debt Snapshot name.
     const { resolveName } = useContactName();
@@ -85,46 +86,101 @@ export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick
         }
     };
 
-    // Kartın Rengi: Alacaksa Yeşilimsi, Borçsa Kırmızımsı
-    // Rejected by receiver should be dim red/gray
-    const cardBgColor = isPaid
-        ? "bg-gray-50 border-gray-200 opacity-70"
-        : isRejectedByReceiver
-            ? "bg-red-50 border-red-200 opacity-80 decoration-slice"
-            : isLender
-                ? "bg-green-50/50 border-green-100 dark:bg-green-900/10 dark:border-green-800"
-                : "bg-red-50/50 border-red-100 dark:bg-red-900/10 dark:border-red-800";
+    // Variant Logic
+    const isChat = variant === 'chat';
+    const isCreator = debt.createdBy === currentUserId; // True if I created it (Right side in Chat)
 
-    // Override color if disabled/blocked? Maybe just opacity or grayscale
-    const finalBgColor = disabled ? "bg-gray-100 border-gray-200 dark:bg-slate-800 dark:border-slate-700 opacity-80" : cardBgColor;
+    // Background Colors
+    // Chat Mode:
+    // Me (Creator) -> Very light tint of status color (Greenish/Reddish/Grayish) or just distinct Gray.
+    // They (Other) -> White/Gray.
+
+    let baseBg = "";
+    if (isChat) {
+        if (isCreator) {
+            // My Bubble
+            // If I created it, and I am Lender -> Green Tint.
+            // If I created it, and I am Borrower -> Red Tint.
+            // Or simple: I said it -> Color it lightly.
+            baseBg = isLender
+                ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 rounded-tr-none"
+                : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 rounded-tr-none";
+        } else {
+            // Their Bubble
+            baseBg = "bg-white dark:bg-slate-800 border-gray-200 dark:border-gray-700 rounded-tl-none";
+        }
+
+        // Overrides for special statuses
+        if (isPaid) baseBg = "bg-gray-100 dark:bg-slate-800 border-gray-200 opacity-80";
+        if (isRejectedByReceiver) baseBg = "bg-red-50 border-red-200 opacity-80";
+        if (disabled) baseBg = "bg-gray-100 dark:bg-slate-800 border-gray-200 opacity-60";
+    } else {
+        // Default Mode
+        baseBg = isPaid
+            ? "bg-gray-50 border-gray-200 opacity-70"
+            : isRejectedByReceiver
+                ? "bg-red-50 border-red-200 opacity-80 decoration-slice"
+                : isLender
+                    ? "bg-green-50/50 border-green-100 dark:bg-green-900/10 dark:border-green-800"
+                    : "bg-red-50/50 border-red-100 dark:bg-red-900/10 dark:border-red-800";
+        if (disabled) baseBg = "bg-gray-100 border-gray-200 dark:bg-slate-800 dark:border-slate-700 opacity-80";
+    }
+
+    // Chat Title Logic
+    const chatTitle = debt.note || "Borç Kaydı";
 
     return (
         <div
             onClick={onClick}
             className={clsx(
-                "p-4 rounded-2xl border active:scale-[0.98] transition-all cursor-pointer relative",
-                finalBgColor
+                "p-4 border active:scale-[0.98] transition-all cursor-pointer relative shadow-sm",
+                isChat ? "rounded-2xl mb-1" : "rounded-2xl",
+                baseBg
             )}
         >
-            <div className="flex items-center gap-4">
-                {/* Avatar */}
-                <Avatar
-                    name={finalDisplayName}
-                    size="md"
-                    className={clsx("shadow-sm bg-white", (disabled || isRejectedByReceiver) && "grayscale")}
-                    status={otherPartyStatus}
-                    uid={linkedUserId || (otherId.length > 20 ? otherId : undefined)}
-                />
+            <div className="flex items-start gap-4">
+                {/* Avatar - Hide in Chat Mode */}
+                {!isChat && (
+                    <Avatar
+                        name={finalDisplayName}
+                        size="md"
+                        className={clsx("shadow-sm bg-white", (disabled || isRejectedByReceiver) && "grayscale")}
+                        status={otherPartyStatus}
+                        uid={linkedUserId || (otherId.length > 20 ? otherId : undefined)}
+                    />
+                )}
 
                 {/* Main Content */}
                 <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start mb-1">
-                        <h3 className={clsx("text-lg font-bold text-gray-900 dark:text-white truncate", (disabled || isRejectedByReceiver) && "line-through text-gray-500")}>
-                            {finalDisplayName}
-                        </h3>
-                        {/* Tutar - KOCAMAN */}
+                    <div className="flex justify-between items-start mb-1 gap-3">
+                        {/* Title Section */}
+                        <div className="min-w-0 flex-1">
+                            <h3 className={clsx(
+                                "font-bold text-gray-900 dark:text-white truncate",
+                                isChat ? "text-base" : "text-lg",
+                                (disabled || isRejectedByReceiver) && "line-through text-gray-500"
+                            )}>
+                                {isChat ? chatTitle : finalDisplayName}
+                            </h3>
+                            {/* Chat Mode Subtitles / Badges */}
+                            {isChat && (
+                                <div className="flex flex-wrap items-center gap-2 mt-1">
+                                    <span className={clsx(
+                                        "text-xs font-medium px-1.5 py-0.5 rounded",
+                                        isLender ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"
+                                    )}>
+                                        {isLender ? "Alacaklısın" : "Borçlusun"}
+                                    </span>
+                                    {isPaid && <span className="text-xs font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">Kapandı</span>}
+                                    {isRejectedByReceiver && <span className="text-xs font-bold text-red-500 bg-red-100 px-1.5 py-0.5 rounded">Silindi</span>}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Tutar */}
                         <div className={clsx(
-                            "text-lg font-bold tracking-tight",
+                            "font-bold tracking-tight shrink-0",
+                            isChat ? "text-base" : "text-lg",
                             isPaid || isRejectedByReceiver ? "text-gray-400 line-through" : (isLender ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"),
                             disabled && "opacity-50"
                         )}>
@@ -132,51 +188,61 @@ export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick
                         </div>
                     </div>
 
-                    <div className="flex justify-between items-end">
-                        <div className="flex flex-col gap-1">
-                            {/* İnsan Diliyle Açıklama */}
-                            <p className={clsx("text-sm font-medium",
-                                isRejectedByReceiver ? "text-red-500" : (isLender ? "text-green-600" : "text-red-600"),
-                                (disabled) && "text-gray-500"
-                            )}>
-                                {isPaid ? "Hesap Kapandı" :
-                                    isRejectedByReceiver ? "Karşı taraf sildi" :
-                                        (isLender ? "Alacaklısın" : "Borçlusun")}
-                            </p>
+                    {!isChat && (
+                        <div className="flex justify-between items-end">
+                            <div className="flex flex-col gap-1">
+                                {/* İnsan Diliyle Açıklama - Default Mode */}
+                                <p className={clsx("text-sm font-medium",
+                                    isRejectedByReceiver ? "text-red-500" : (isLender ? "text-green-600" : "text-red-600"),
+                                    (disabled) && "text-gray-500"
+                                )}>
+                                    {isPaid ? "Hesap Kapandı" :
+                                        isRejectedByReceiver ? "Karşı taraf sildi" :
+                                            (isLender ? "Alacaklısın" : "Borçlusun")}
+                                </p>
 
-                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                                <span>{debt.createdAt ? format(debt.createdAt.toDate(), 'd MMM', { locale: tr }) : '-'}</span>
-                                {hasInstallments && (
-                                    <span className="bg-white px-2 py-0.5 rounded-md border text-gray-600 font-medium shadow-sm">
-                                        {paidInstallments}/{totalInstallments} Taksit
-                                    </span>
-                                )}
+                                <div className="flex items-center gap-2 text-xs text-gray-500">
+                                    <span>{debt.createdAt ? format(debt.createdAt.toDate(), 'd MMM', { locale: tr }) : '-'}</span>
+                                    {hasInstallments && (
+                                        <span className="bg-white px-2 py-0.5 rounded-md border text-gray-600 font-medium shadow-sm">
+                                            {paidInstallments}/{totalInstallments} Taksit
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Durum İkonları - Default Mode */}
+                            <div>
+                                {disabled ? (
+                                    <div className="text-gray-400" title="Engellendi">
+                                        <Ban size={20} />
+                                    </div>
+                                ) : isRejectedByReceiver ? (
+                                    <div className="text-red-500 font-bold text-xs bg-red-100 px-2 py-1 rounded-lg border border-red-200">
+                                        ❌ Reddedildi
+                                    </div>
+                                ) : isPending ? (
+                                    <div className="flex items-center gap-1 bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg text-xs font-bold">
+                                        <Clock size={14} />
+                                        <span>Onay Bekliyor</span>
+                                    </div>
+                                ) : isPaid ? (
+                                    <div className="text-green-500">
+                                        <CheckCheck size={20} />
+                                    </div>
+                                ) : null}
                             </div>
                         </div>
+                    )}
 
-                        {/* Durum İkonları */}
-                        <div>
-                            {disabled ? (
-                                <div className="text-gray-400" title="Engellendi">
-                                    <Ban size={20} />
-                                </div>
-                            ) : isRejectedByReceiver ? (
-                                <div className="text-red-500 font-bold text-xs bg-red-100 px-2 py-1 rounded-lg border border-red-200">
-                                    ❌ Reddedildi
-                                </div>
-                            ) : isPending ? (
-                                <div className="flex items-center gap-1 bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg text-xs font-bold">
-                                    <Clock size={14} />
-                                    <span>Onay Bekliyor</span>
-                                </div>
-                            ) : isPaid ? (
-                                <div className="text-green-500">
-                                    <CheckCheck size={20} />
-                                </div>
-                            ) : null}
-                            {/* Auto Hidden - No icon for creator, looks active. */}
+                    {/* Chat Mode Timestamp */}
+                    {isChat && (
+                        <div className="mt-2 flex justify-end">
+                            <span className="text-[10px] text-text-secondary opacity-70">
+                                {debt.createdAt ? format(debt.createdAt.toDate(), 'HH:mm • d MMM', { locale: tr }) : ''}
+                            </span>
                         </div>
-                    </div>
+                    )}
 
                     {/* ACTIONS */}
                     {/* 1. Legacy Pending Response (Only if I am receiver and Pending) */}
@@ -199,9 +265,6 @@ export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick
 
                     {/* 2. New Opt-Out (Soft Delete) for Active Debts (Only if I am receiver and Active) */}
                     {isActive && debt.borrowerId === currentUserId && isLender && !disabled && (
-                        // I am borrower (Receiver), Debt is Lennng (Active). Wait, if type is BORROWING?
-                        // If I am borrower, and lender created it.
-                        // Logic: debt.createdBy != currentUserId.
                         debt.createdBy !== currentUserId && (
                             <div className="mt-3 flex gap-2 pt-3 border-t border-black/5">
                                 <button

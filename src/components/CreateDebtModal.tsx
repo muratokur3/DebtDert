@@ -368,8 +368,8 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm pb-20 md:pb-4">
-            <div className="bg-surface rounded-2xl w-full max-w-sm shadow-xl animate-in fade-in zoom-in duration-200 h-auto max-h-[80dvh] flex flex-col border border-slate-700">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-surface rounded-2xl w-full max-w-sm shadow-xl animate-in fade-in zoom-in duration-200 h-auto max-h-[90dvh] flex flex-col border border-slate-700">
                 <div className="flex justify-between items-center p-6 pb-2 flex-none">
                     <h2 className="text-xl font-bold text-text-primary">Yeni İşlem Ekle</h2>
                     <button onClick={onClose} className="p-2 hover:bg-slate-700/50 rounded-full">

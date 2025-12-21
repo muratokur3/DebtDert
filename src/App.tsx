@@ -14,6 +14,7 @@ import { PendingRequests } from './pages/PendingRequests';
 import { Layout } from './components/Layout';
 import { useAuth } from './hooks/useAuth';
 import { Trash } from './pages/Trash';
+import { ActiveSessions } from './pages/ActiveSessions';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -55,6 +56,7 @@ function App() {
                   <Route path="/person/:id" element={<PersonDetail />} />
                   <Route path="/contacts" element={<Contacts />} />
                   <Route path="/settings" element={<Settings />} />
+                  <Route path="/settings/sessions" element={<ActiveSessions />} />
                   <Route path="/settings/blocked" element={<BlockedUsers />} />
                   <Route path="/trash" element={<Trash />} />
                   <Route path="/pending-requests" element={<PendingRequests />} />

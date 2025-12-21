@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, UserX, ChevronRight, RefreshCw, Wallet, Users, User, Moon, Sun, LogOut, CheckCircle2, Clock, Trash2 } from 'lucide-react';
+import { ArrowLeft, UserX, ChevronRight, RefreshCw, Wallet, Users, User, Moon, Sun, LogOut, CheckCircle2, Clock, Trash2, ShieldCheck } from 'lucide-react';
 import { updateUserPreferences } from '../services/db';
 import { useAuth } from '../hooks/useAuth';
 import type { User as UserType } from '../types';
@@ -190,9 +190,14 @@ export const Settings = () => {
                     </div>
 
                     {/* Group B: Privacy */}
-                    <SectionHeader title="Gizlilik & Senkronizasyon" />
+                    <SectionHeader title="Gizlilik & Güvenlik" />
                     <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden divide-y divide-gray-100 dark:divide-slate-800">
-
+                        <SettingsRow
+                            icon={ShieldCheck}
+                            title="Aktif Oturumlar"
+                            description="Giriş yapılmış cihazları yönet."
+                            onClick={() => navigate('/settings/sessions')}
+                        />
                         <SettingsRow
                             icon={RefreshCw}
                             title="Rehber Senkronizasyonu"

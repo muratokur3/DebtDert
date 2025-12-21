@@ -13,7 +13,7 @@ import { ImportContactsButton } from '../components/ImportContactsButton';
 import type { Conflict } from '../components/ImportContactsButton';
 import { ConflictResolutionModal } from '../components/ConflictResolutionModal';
 import { ContactModal } from '../components/ContactModal';
-import { Plus } from 'lucide-react';
+
 
 import { useModal } from '../context/ModalContext';
 
@@ -266,15 +266,7 @@ export const Contacts = () => {
                                 onContactsSelected={handleContactsSelected}
                             />
                         )}
-                        <button
-                            onClick={() => {
-                                setEditingContact(null);
-                                setShowModal(true);
-                            }}
-                            className="ml-2 p-2 bg-primary text-white rounded-full hover:bg-blue-600 transition-colors"
-                        >
-                            <Plus size={20} />
-                        </button>
+
                     </div>
 
                 </div>
@@ -309,7 +301,7 @@ export const Contacts = () => {
                                 >
                                     <div className="p-4 flex items-center justify-between hover:bg-background/50 transition-colors">
                                         <div
-                                            onClick={() => navigate(`/person/${contact.phoneNumber}`)}
+                                            onClick={() => navigate(`/person/${contact.phoneNumber}`, { state: { name: contact.name, phone: contact.phoneNumber } })}
                                             className="flex items-center gap-3 cursor-pointer flex-1"
                                         >
                                             <div className="w-10 h-10 flex items-center justify-center relative">

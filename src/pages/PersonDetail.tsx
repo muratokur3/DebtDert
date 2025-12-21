@@ -4,12 +4,11 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useDebts } from '../hooks/useDebts';
 import { useContactName } from '../hooks/useContactName';
-import { ArrowLeft, Plus, Phone, MessageCircle, Trash2, Edit2, X, MoreVertical, Ban } from 'lucide-react';
+import { ArrowLeft, Phone, MessageCircle, Trash2, Edit2, X, MoreVertical, Ban } from 'lucide-react';
 import { searchUserByPhone, getContacts, updateContact } from '../services/db';
 import { blockUser, isUserBlocked, unblockUser } from '../services/blockService'; // Import block services
 import { Avatar } from '../components/Avatar';
 import { DebtCard } from '../components/DebtCard';
-import { CreateDebtModal } from '../components/CreateDebtModal';
 import { PhoneInput } from '../components/PhoneInput';
 import { formatCurrency } from '../utils/format';
 import { convertToTRY, fetchRates, type CurrencyRates } from '../services/currency';
@@ -30,7 +29,6 @@ export const PersonDetail = () => {
     const { resolveName } = useContactName(); // Added this
     const { showAlert, showConfirm } = useModal();
     const [rates, setRates] = useState<CurrencyRates | null>(null);
-    const [showCreateModal, setShowCreateModal] = useState(false);
     const [isRegisteredUser, setIsRegisteredUser] = useState(false);
 
     // New State for Modal Target
@@ -70,12 +68,12 @@ export const PersonDetail = () => {
         }
 
         if (isBlocked) {
-             const confirmed = await showConfirm("Engeli Kaldır", "Kullanıcının engelini kaldırmak istiyor musunuz?");
-             if (confirmed) {
-                 await unblockUser(user.uid, targetUid);
-                 setIsBlocked(false);
-                 showAlert("Başarılı", "Engel kaldırıldı.", "success");
-             }
+            const confirmed = await showConfirm("Engeli Kaldır", "Kullanıcının engelini kaldırmak istiyor musunuz?");
+            if (confirmed) {
+                await unblockUser(user.uid, targetUid);
+                setIsBlocked(false);
+                showAlert("Başarılı", "Engel kaldırıldı.", "success");
+            }
         } else {
             const confirmed = await showConfirm(
                 "Kullanıcıyı Engelle",
@@ -336,25 +334,10 @@ export const PersonDetail = () => {
                             <Phone size={18} />
                         </a>
 
-                        {/* Primary Action: Create Debt */}
-                        {!isBlocked && ( // Hide if blocked? No, prompt says disable submission, but doesn't explicitly say hide button. But logic: "Disable interaction".
-                        <button
-                            onClick={() => setShowCreateModal(true)}
-                            className="w-10 h-10 rounded-full bg-primary text-white shadow-lg shadow-blue-500/30 flex items-center justify-center hover:bg-blue-600 active:scale-95 transition-all"
-                        >
-                            <Plus size={20} className="stroke-[3]" />
-                        </button>
-                        )}
-                         {isBlocked && (
-                             <button
-                                disabled
-                                className="w-10 h-10 rounded-full bg-gray-400 text-white cursor-not-allowed flex items-center justify-center"
-                            >
-                                <Ban size={20} className="stroke-[3]" />
-                            </button>
-                        )}
-
-                        {/* More Options Menu */}
+                        {/* More Options Menu, moved inside div to reuse space if needed, 
+                            but actually we just removed the primary action button. 
+                            WhatsApp and Call buttons remain. 
+                        */}
                         <div className="relative">
                             <button
                                 onClick={() => setShowMenu(!showMenu)}
@@ -408,10 +391,10 @@ export const PersonDetail = () => {
                 {/* Blocked Badge */}
                 {isBlocked && (
                     <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-xl border border-orange-200 dark:border-orange-800 flex items-center gap-3">
-                         <Ban className="text-orange-600 shrink-0" size={20} />
-                         <p className="text-sm text-orange-800 dark:text-orange-200">
-                             Bu kullanıcı engellendi. Yeni işlem yapamazsınız ancak geçmiş kayıtlar tutulur.
-                         </p>
+                        <Ban className="text-orange-600 shrink-0" size={20} />
+                        <p className="text-sm text-orange-800 dark:text-orange-200">
+                            Bu kullanıcı engellendi. Yeni işlem yapamazsınız ancak geçmiş kayıtlar tutulur.
+                        </p>
                     </div>
                 )}
 
@@ -461,31 +444,6 @@ export const PersonDetail = () => {
                 </div>
             </main>
 
-            <CreateDebtModal
-                isOpen={showCreateModal}
-                onClose={() => setShowCreateModal(false)}
-                initialPhoneNumber={id}
-                initialName={personInfo.name} // Pass the name resolved in PersonDetail
-                targetUser={targetUserObject}
-                onSubmit={async (borrowerId, borrowerName, amount, type, currency, note, dueDate, installments, canBorrowerAddPayment, requestApproval) => {
-                    if (!user) return;
-                    await import('../services/db').then(({ createDebt }) => createDebt(
-                        user.uid,
-                        user.displayName || 'Bilinmeyen',
-                        borrowerId,
-                        borrowerName,
-                        amount,
-                        type,
-                        currency,
-                        note,
-                        dueDate,
-                        installments,
-                        canBorrowerAddPayment,
-                        requestApproval
-                    ));
-                    setShowCreateModal(false);
-                }}
-            />
             {/* Edit Modal */}
             {
                 showEditModal && (

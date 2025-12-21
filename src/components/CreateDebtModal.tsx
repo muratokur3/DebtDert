@@ -91,6 +91,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
     // Blocked check
     const [isTargetBlocked, setIsTargetBlocked] = useState(false);
     const [showContactModal, setShowContactModal] = useState(false);
+    const [isResolvingInitial, setIsResolvingInitial] = useState(false);
 
     // Reset/Init when opening
     useEffect(() => {
@@ -110,11 +111,17 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                     setFoundUser(null);
                 }
             } else if (propInitialName && initialPhone) {
-                // Shadow User Case from PersonDetail (Raw Phone)
+                // Shadow/Optimistic User Case 
+                // Whether it's a raw phone or a UID with a known name (Optimistic System User)
                 setStep('DETAILS');
-                setIsShadowUser(true);
+                setIsShadowUser(true); // Treat as shadow until resolved
                 setFoundContact(null);
                 setFoundUser(null);
+            } else if (initialPhoneNumber && initialPhoneNumber.length > 20) {
+                // UID provided but no user object and NO name yet.
+                // Must resolve before showing UI to avoid empty card.
+                setIsResolvingInitial(true);
+                setStep('SEARCH');
             } else {
                 setStep('SEARCH');
                 setIsShadowUser(false);
@@ -148,6 +155,43 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
             setIsTargetBlocked(false);
         }
     }, [foundUser, foundContact, blockedUsers]);
+
+    // Fetch User by UID if initialPhoneNumber looks like a UID
+    useEffect(() => {
+        if (initialPhoneNumber && initialPhoneNumber.length > 20 && !targetUser && isOpen) {
+            const fetchUser = async () => {
+                // Only block UI if we don't have a name to show optimistically
+                if (!borrowerName) {
+                    setIsResolvingInitial(true);
+                }
+
+                try {
+                    // We need to import getDoc and doc and db. Since they might not be imported yet, 
+                    // I will assume they need to be imported or used from services/db if available, 
+                    // or use the direct firebase import. 
+                    // PersonDetail uses: import { doc, getDoc } from 'firebase/firestore'; import { db } from '../services/firebase';
+                    // Let's use the same.
+                    const { doc, getDoc } = await import('firebase/firestore');
+                    const { db } = await import('../services/firebase');
+
+                    const userDoc = await getDoc(doc(db, 'users', initialPhoneNumber));
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data() as User;
+                        setFoundUser(userData);
+                        setPhoneNumber(userData.primaryPhoneNumber || userData.phoneNumbers?.[0] || userData.phoneNumber || '');
+                        setBorrowerName(userData.displayName || '');
+                        setStep('DETAILS');
+                        setIsShadowUser(false);
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch user by UID in Modal", e);
+                } finally {
+                    setIsResolvingInitial(false);
+                }
+            };
+            fetchUser();
+        }
+    }, [initialPhoneNumber, targetUser, isOpen, borrowerName]); // Added borrowerName dep
 
 
     // Search Effect - Disable if NOT in SEARCH step
@@ -392,7 +436,12 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({ isOpen, onClos
                         </div>
 
                         {/* Flow Control */}
-                        {step === 'DETAILS' ? (
+                        {isResolvingInitial ? (
+                            <div className="flex flex-col items-center justify-center py-12 space-y-3">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                                <p className="text-sm text-text-secondary">Kullanıcı aranıyor...</p>
+                            </div>
+                        ) : step === 'DETAILS' ? (
                             <SelectedUserCard
                                 name={foundContact?.name || foundUser?.displayName || (isShadowUser ? borrowerName : '')}
                                 phoneNumber={phoneNumber}

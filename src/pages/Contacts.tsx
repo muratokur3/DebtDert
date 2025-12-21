@@ -339,7 +339,10 @@ export const Contacts = () => {
                                             >
                                                 <div className="p-4 pl-5 flex items-center justify-between hover:bg-background/50 transition-colors min-h-[72px]">
                                                     <div
-                                                        onClick={() => navigate(`/person/${contact.phoneNumber}`, { state: { name: contact.name, phone: contact.phoneNumber } })}
+                                                        onClick={() => {
+                                                            const targetId = contact.linkedUserId || contact.phoneNumber;
+                                                            navigate(`/person/${targetId}`, { state: { name: contact.name, phone: contact.phoneNumber } });
+                                                        }}
                                                         className="flex items-center gap-4 cursor-pointer flex-1"
                                                     >
                                                         <div className="w-12 h-12 flex items-center justify-center relative shrink-0">

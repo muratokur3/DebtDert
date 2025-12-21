@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useDebts } from '../hooks/useDebts';
@@ -123,6 +123,9 @@ export const PersonDetail = () => {
     }, []);
 
     // Check if user is registered and find Contact ID
+    const [resolvedUid, setResolvedUid] = useState<string | null>(null);
+    const [verifying, setVerifying] = useState(true);
+
     useEffect(() => {
         const checkRegistrationAndContact = async () => {
             if (!id || !user) return;
@@ -136,6 +139,7 @@ export const PersonDetail = () => {
 
             // 1. Check Registration & Fetch User
             if (id.length > 20) { // UID check
+                setResolvedUid(id);
                 setIsRegisteredUser(true);
                 // Fetch User Details for UID
                 try {
@@ -148,7 +152,13 @@ export const PersonDetail = () => {
                 }
             } else {
                 foundSysUser = await searchUserByPhone(id);
-                setIsRegisteredUser(!!foundSysUser);
+                if (foundSysUser) {
+                    setResolvedUid(foundSysUser.uid);
+                    setIsRegisteredUser(true);
+                } else {
+                    setResolvedUid(null);
+                    setIsRegisteredUser(false);
+                }
             }
 
             // 2. Find Contact ID for editing AND for Modal Target
@@ -172,6 +182,8 @@ export const PersonDetail = () => {
                 }
             } catch (error) {
                 console.error("Error finding contact:", error);
+            } finally {
+                setVerifying(false);
             }
         };
         checkRegistrationAndContact();
@@ -210,9 +222,43 @@ export const PersonDetail = () => {
             const cleanOtherId = cleanPhoneNumber(otherId);
 
             // Check if ID matches or if it's a phone number match (for non-system users)
-            return otherId === id || cleanOtherId === cleanId || (d.participants.includes(id));
+            // Also check resolvedUid if available (handles case where URL is phone but debt has UID)
+            return otherId === id ||
+                cleanOtherId === cleanId ||
+                (d.participants.includes(id)) ||
+                (resolvedUid && otherId === resolvedUid);
         });
-    }, [debts, id, user]);
+    }, [debts, id, user, resolvedUid]);
+
+    // Access Control Check
+    const denyAccessTriggered = useRef(false); // Guard to prevent multi-firing
+
+    useEffect(() => {
+        if (loading || verifying || !user || !id || denyAccessTriggered.current) return;
+
+        // Rules:
+        // 1. If UID -> Allowed (System User)
+        // 2. If Registered via Phone -> Allowed (System User)
+        // 3. If In Contacts -> Allowed
+        // 4. If Has Debt History -> Allowed
+
+        const isUID = id.length > 20;
+        const hasHistory = personDebts.length > 0;
+        const inContacts = !!contactId;
+
+        // "eğer kullanıcı kaydı yok ise uid yok ise ve nuamra ile arama yapılıyor ise"
+        // If NOT UID AND NOT Registered User
+        if (!isUID && !isRegisteredUser) {
+            if (!inContacts && !hasHistory) {
+                denyAccessTriggered.current = true;
+                (async () => {
+                    await showAlert("Sayfa Bulunamadı", "Aradığınız kişi veya kayıt bulunamadı. Ana sayfaya yönlendiriliyorsunuz.", "error");
+                    // Allow modal to close visually before navigating
+                    setTimeout(() => navigate('/'), 100);
+                })();
+            }
+        }
+    }, [loading, verifying, user, id, isRegisteredUser, contactId, personDebts.length, navigate, showAlert]);
 
     const personInfo = useMemo(() => {
         // Determine fallback name and phone from debts if available

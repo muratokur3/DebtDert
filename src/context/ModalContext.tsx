@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 import { AlertModal } from '../components/AlertModal';
 import { AnimatePresence, motion } from 'framer-motion';
 import { HelpCircle } from 'lucide-react';
@@ -50,17 +50,17 @@ export const ModalProvider = ({ children }: { children: ReactNode }) => {
         type: 'info' // Default
     });
 
-    const showAlert = (title: string, message: string, type: ModalType = 'info'): Promise<void> => {
+    const showAlert = useCallback((title: string, message: string, type: ModalType = 'info'): Promise<void> => {
         return new Promise((resolve) => {
             setAlertState({ isOpen: true, title, message, type, resolve });
         });
-    };
+    }, []);
 
-    const showConfirm = (title: string, message: string, type: ModalType = 'info'): Promise<boolean> => {
+    const showConfirm = useCallback((title: string, message: string, type: ModalType = 'info'): Promise<boolean> => {
         return new Promise((resolve) => {
             setConfirmState({ isOpen: true, title, message, type, resolve });
         });
-    };
+    }, []);
 
     const handleAlertClose = () => {
         setAlertState(prev => ({ ...prev, isOpen: false }));

@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, UserX, ChevronRight, RefreshCw, Wallet, Users, User, Moon, Sun, LogOut, CheckCircle2, Clock, Trash2, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, UserX, ChevronRight, RefreshCw, Wallet, Users, User, Moon, Sun, LogOut, CheckCircle2, Clock, Trash2 } from 'lucide-react';
 import { updateUserPreferences } from '../services/db';
 import { useAuth } from '../hooks/useAuth';
 import type { User as UserType } from '../types';
 import { Toggle } from '../components/Toggle';
 import { useModal } from '../context/ModalContext';
 import { Avatar } from '../components/Avatar';
-import ManagePhones from '../components/ManagePhones';
-import EmailManager from '../components/EmailManager';
 import { useTheme } from '../context/ThemeContext';
 import { logoutUser } from '../services/auth';
 
@@ -136,43 +134,35 @@ export const Settings = () => {
             <main className="max-w-2xl mx-auto p-4">
                 <div className="space-y-1">
 
-                    {/* User Profile Card */}
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden p-6 mb-6">
-                        <div className="flex items-center gap-4 mb-6">
-                            <Avatar
-                                name={user?.displayName || ''}
-                                photoURL={user?.photoURL || undefined}
-                                uid={user?.uid}
-                                size="xl"
-                                className="w-20 h-20"
-                                status={user?.phoneNumbers && user.phoneNumbers.length > 0 ? 'system' : 'none'}
-                            />
-                            <div className="flex-1 min-w-0">
-                                <h2 className="text-xl font-bold text-gray-900 dark:text-white truncate">
-                                    {user?.displayName || 'Kullanıcı'}
-                                </h2>
-                                <p className="text-sm text-gray-500 dark:text-slate-400">
-                                    {user?.primaryPhoneNumber || user?.phoneNumber || ''}
-                                </p>
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={() => navigate('/profile')}
-                            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
-                        >
-                            <User size={18} />
-                            Profili Düzenle
-                        </button>
-
-                        {/* Account Management */}
-                        <div className="mt-6 space-y-4">
-                            <ManagePhones user={user} />
-                            <EmailManager />
-                        </div>
+                    {/* User Profile Summary (Static) */}
+                    <div className="flex flex-col items-center py-8 mb-4">
+                        <Avatar
+                            name={user?.displayName || ''}
+                            photoURL={user?.photoURL || undefined}
+                            uid={user?.uid}
+                            size="xl"
+                            className="w-24 h-24 mb-4 shadow-md"
+                            status={user?.phoneNumbers && user.phoneNumbers.length > 0 ? 'system' : 'none'}
+                        />
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                            {user?.displayName || 'Kullanıcı'}
+                        </h2>
+                        <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
+                            {user?.primaryPhoneNumber || user?.phoneNumber || ''}
+                        </p>
                     </div>
 
-                    {/* Group A: Approvals */}
+                    {/* Group A: General */}
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden divide-y divide-gray-100 dark:divide-slate-800">
+                        <SettingsRow
+                            icon={User}
+                            title="Hesap"
+                            description="Numaralar, E-posta, Güvenlik"
+                            onClick={() => navigate('/settings/account')}
+                        />
+                    </div>
+
+                    {/* Group B: Approvals */}
                     <SectionHeader title="Borç Yönetimi" />
                     <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden divide-y divide-gray-100 dark:divide-slate-800">
                         <SettingsRow
@@ -189,15 +179,9 @@ export const Settings = () => {
                         />
                     </div>
 
-                    {/* Group B: Privacy */}
-                    <SectionHeader title="Gizlilik & Güvenlik" />
+                    {/* Group C: Synchronization */}
+                    <SectionHeader title="Rehber & Senkronizasyon" />
                     <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden divide-y divide-gray-100 dark:divide-slate-800">
-                        <SettingsRow
-                            icon={ShieldCheck}
-                            title="Aktif Oturumlar"
-                            description="Giriş yapılmış cihazları yönet."
-                            onClick={() => navigate('/settings/sessions')}
-                        />
                         <SettingsRow
                             icon={RefreshCw}
                             title="Rehber Senkronizasyonu"
@@ -212,7 +196,7 @@ export const Settings = () => {
                         />
                     </div>
 
-                    {/* Group C: Blocked */}
+                    {/* Group D: Blocked */}
                     <SectionHeader title="Kişiler" />
                     <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden divide-y divide-gray-100 dark:divide-slate-800">
                         <SettingsRow
@@ -223,7 +207,7 @@ export const Settings = () => {
                         />
                     </div>
 
-                    {/* Group D: Storage */}
+                    {/* Group E: Storage */}
                     <SectionHeader title="Depolama" />
                     <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden divide-y divide-gray-100 dark:divide-slate-800">
                         <SettingsRow
@@ -251,7 +235,7 @@ export const Settings = () => {
                         />
                     </div>
 
-                    {/* Group E: Appearance */}
+                    {/* Group F: Appearance */}
                     <SectionHeader title="Görünüm" />
                     <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden">
                         <SettingsRow

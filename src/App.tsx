@@ -4,7 +4,6 @@ import { Register } from './pages/Register';
 import { Dashboard } from './pages/Dashboard';
 import { DebtDetail } from './pages/DebtDetail';
 import { Contacts } from './pages/Contacts';
-import { EditProfile } from './pages/EditProfile';
 import { Settings } from './pages/Settings';
 import { BlockedUsers } from './pages/BlockedUsers';
 import { QuickDial } from './pages/QuickDial';
@@ -15,6 +14,7 @@ import { Layout } from './components/Layout';
 import { useAuth } from './hooks/useAuth';
 import { Trash } from './pages/Trash';
 import { ActiveSessions } from './pages/ActiveSessions';
+import { AccountSettings } from './pages/AccountSettings';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -49,7 +49,7 @@ function App() {
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/receivables" element={<Dashboard />} />
                   <Route path="/payables" element={<Dashboard />} />
-                  <Route path="/profile" element={<EditProfile />} />
+                  <Route path="/settings/account" element={<AccountSettings />} />
                   <Route path="/debt/:id" element={<DebtDetail />} />
                   <Route path="/dial" element={<QuickDial />} />
                   <Route path="/tools" element={<Tools />} />

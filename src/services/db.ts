@@ -95,7 +95,8 @@ export const markContactAsRead = async (currentUserId: string, targetUserId: str
         if (!snap.empty) {
             const docRef = snap.docs[0].ref;
             await updateDoc(docRef, {
-                hasUnreadActivity: false
+                hasUnreadActivity: false,
+                lastReadAt: serverTimestamp()
             });
         }
     } catch (error) {

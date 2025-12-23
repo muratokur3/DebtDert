@@ -356,15 +356,20 @@ export const Contacts = () => {
                                                                     <Ban size={14} className="text-red-500" />
                                                                 </div>
                                                             )}
+                                                            {!blocked && contact.hasUnreadActivity && (
+                                                                <div className="absolute top-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-surface animate-pulse" />
+                                                            )}
                                                         </div>
                                                         <div className="min-w-0 flex-1">
                                                             <div className="flex items-center gap-2 mb-0.5">
-                                                                <h3 className={`font-bold text-base truncate ${blocked ? 'text-gray-500 line-through decoration-red-500/50' : 'text-text-primary'}`}>
+                                                                <h3 className={`font-bold text-base truncate ${blocked ? 'text-gray-500 line-through decoration-red-500/50' : contact.hasUnreadActivity ? 'text-text-primary font-extrabold' : 'text-text-primary'}`}>
                                                                     {contact.name}
                                                                 </h3>
                                                                 {blocked && <span className="text-[10px] font-bold text-red-500 bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded">Engelli</span>}
                                                             </div>
-                                                            <p className="text-sm text-text-secondary truncate">{formatPhoneNumber(contact.phoneNumber)}</p>
+                                                            <p className={`text-sm truncate ${contact.hasUnreadActivity ? 'text-green-600 font-medium' : 'text-text-secondary'}`}>
+                                                                {contact.hasUnreadActivity ? 'Yeni Hareket' : formatPhoneNumber(contact.phoneNumber)}
+                                                            </p>
                                                         </div>
                                                     </div>
 

@@ -37,6 +37,7 @@ export interface Contact {
     lastActivityMessage?: string;
     lastActivityAt?: Timestamp;
     hasUnreadActivity?: boolean;
+    lastReadAt?: Timestamp; // Timestamp of when the user last opened this contact
     lastActorId?: string;
 }
 

@@ -36,6 +36,7 @@ export const PersonDetail = () => {
 
     // Edit Contact State
     const [contactId, setContactId] = useState<string | null>(null);
+    const [lastReadTimestamp, setLastReadTimestamp] = useState<number | null>(null); // New State
     const [showEditModal, setShowEditModal] = useState(false);
     const [editName, setEditName] = useState('');
     const [editPhone, setEditPhone] = useState('');
@@ -248,6 +249,17 @@ export const PersonDetail = () => {
                     setEditName(foundContactData.name);
                     setEditPhone(foundContactData.phoneNumber);
                     setTargetUserObject(foundContactData);
+
+                    // Capture lastReadAt for highlighting new items
+                    if (foundContactData.lastReadAt) {
+                        setLastReadTimestamp(foundContactData.lastReadAt.toMillis());
+                    } else {
+                        // If never read, maybe everything is new? Or nothing? 
+                        // Let's assume nothing is "New" in the highlighting sense if first time, 
+                        // or we could defaults to 0. 
+                        // Actually, if lastReadAt is missing, it means we haven't tracked it yet.
+                        setLastReadTimestamp(Date.now()); // Avoid highlighting everything on first ever load
+                    }
                 } else if (foundSysUser) {
                     setTargetUserObject(foundSysUser);
                 } else {
@@ -598,11 +610,17 @@ export const PersonDetail = () => {
                     {personDebts.length > 0 ? (
                         personDebts.map(debt => {
                             const isMyEntry = debt.createdBy === user?.uid;
+
+                            // Check if it's new (created AFTER my last read time)
+                            // Only highlight if I didn't create it (incoming)
+                            const isNew = !isMyEntry && lastReadTimestamp && debt.createdAt && debt.createdAt.toMillis() > lastReadTimestamp;
+
                             return (
                                 <div key={debt.id} className={clsx("flex w-full", isMyEntry ? "justify-end" : "justify-start")}>
                                     <div className="w-[85%]">
                                         <DebtCard
                                             debt={debt}
+                                            isNew={!!isNew}
                                             currentUserId={user?.uid || ''}
                                             onClick={() => navigate(`/debt/${debt.id}`)}
                                             disabled={isBlocked}

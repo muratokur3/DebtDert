@@ -16,9 +16,10 @@ interface DebtCardProps {
     otherPartyStatus?: 'none' | 'system' | 'contact';
     disabled?: boolean; // New prop for blocked state
     variant?: 'default' | 'chat'; // New prop for Chat Layout
+    isNew?: boolean; // New prop for highlighting
 }
 
-export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick, otherPartyStatus = 'none', disabled = false, variant = 'default' }) => {
+export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick, otherPartyStatus = 'none', disabled = false, variant = 'default', isNew = false }) => {
     // Live Name Resolution (Scenario 4: Update Propagation)
     // We prioritize the Contact Book name over the Debt Snapshot name.
     const { resolveName } = useContactName();
@@ -107,7 +108,9 @@ export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick
                 : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 rounded-tr-none";
         } else {
             // Their Bubble
-            baseBg = "bg-white dark:bg-slate-800 border-gray-200 dark:border-gray-700 rounded-tl-none";
+            baseBg = isNew
+                ? "bg-green-50/80 dark:bg-green-900/10 border-green-200 dark:border-green-800 rounded-tl-none shadow-[0_0_10px_rgba(22,163,74,0.1)] ring-1 ring-green-200 dark:ring-green-800"
+                : "bg-white dark:bg-slate-800 border-gray-200 dark:border-gray-700 rounded-tl-none";
         }
 
         // Overrides for special statuses
@@ -135,7 +138,8 @@ export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick
             className={clsx(
                 "p-4 border active:scale-[0.98] transition-all cursor-pointer relative shadow-md hover:shadow-lg",
                 isChat ? "rounded-2xl mb-1" : "rounded-2xl",
-                baseBg
+                baseBg,
+                isNew && !isChat && "ring-2 ring-green-500/20"
             )}
         >
             <div className="flex items-start gap-4">
@@ -165,6 +169,7 @@ export const DebtCard: React.FC<DebtCardProps> = ({ debt, currentUserId, onClick
                             {/* Chat Mode Subtitles / Badges */}
                             {isChat && (
                                 <div className="flex flex-wrap items-center gap-2 mt-1">
+                                    {isNew && <span className="text-[10px] font-bold text-white bg-green-500 px-1.5 py-0.5 rounded shadow-sm animate-pulse">YENİ</span>}
                                     <span className={clsx(
                                         "text-xs font-medium px-1.5 py-0.5 rounded",
                                         isLender ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400"

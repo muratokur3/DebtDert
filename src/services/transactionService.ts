@@ -159,14 +159,19 @@ export const addLedgerTransaction = async (
 ): Promise<string> => {
     const txRef = getLedgerTransactionsRef(ledgerId);
     
-    const newTx: Omit<Transaction, 'id'> = {
+    // Build transaction object without undefined values
+    const newTx: Record<string, unknown> = {
         amount,
         direction,
-        description: description || undefined,
-        createdAt: serverTimestamp() as Timestamp,
+        createdAt: serverTimestamp(),
         createdBy: userId,
         type: 'SIMPLE'
     };
+    
+    // Only add description if it has a value
+    if (description && description.trim()) {
+        newTx.description = description.trim();
+    }
 
     const docRef = await addDoc(txRef, newTx);
     

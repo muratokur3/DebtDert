@@ -43,7 +43,10 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user) return;
+        if (!user) {
+            showAlert("Hata", "Oturum açmanız gerekiyor.", "error");
+            return;
+        }
 
         const numAmount = parseFloat(amount.replace(',', '.'));
         if (isNaN(numAmount) || numAmount <= 0) {
@@ -55,14 +58,42 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
         try {
             // Get or create ledger if needed
             let targetLedgerId = ledgerId;
-            if (!targetLedgerId && userId && userName && otherPartyId && otherPartyName) {
-                targetLedgerId = await getOrCreateLedger(userId, userName, otherPartyId, otherPartyName);
+            
+            if (!targetLedgerId) {
+                // Need all params to create ledger
+                const effectiveUserId = userId || user.uid;
+                const effectiveUserName = userName || user.displayName || 'Kullanıcı';
+                const effectiveOtherPartyId = otherPartyId;
+                const effectiveOtherPartyName = otherPartyName || contactName;
+
+                if (!effectiveOtherPartyId) {
+                    showAlert("Hata", "Karşı taraf bilgisi eksik.", "error");
+                    setSubmitting(false);
+                    return;
+                }
+
+                console.log('Creating ledger with:', {
+                    userId: effectiveUserId,
+                    userName: effectiveUserName,
+                    otherPartyId: effectiveOtherPartyId,
+                    otherPartyName: effectiveOtherPartyName
+                });
+
+                targetLedgerId = await getOrCreateLedger(
+                    effectiveUserId,
+                    effectiveUserName,
+                    effectiveOtherPartyId,
+                    effectiveOtherPartyName
+                );
             }
 
             if (!targetLedgerId) {
-                showAlert("Hata", "Defter bulunamadı.", "error");
+                showAlert("Hata", "Defter oluşturulamadı.", "error");
+                setSubmitting(false);
                 return;
             }
+
+            console.log('Adding transaction to ledger:', targetLedgerId);
 
             await addLedgerTransaction(
                 targetLedgerId,
@@ -71,6 +102,7 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                 direction,
                 description.trim() || undefined
             );
+
             showAlert("Başarılı", "İşlem eklendi.", "success");
             // Reset form
             setAmount('');
@@ -78,8 +110,8 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
             setDirection('OUTGOING');
             onClose();
         } catch (error) {
-            console.error(error);
-            showAlert("Hata", "İşlem eklenemedi.", "error");
+            console.error('Transaction error:', error);
+            showAlert("Hata", "İşlem eklenemedi: " + (error as Error).message, "error");
         } finally {
             setSubmitting(false);
         }
@@ -88,95 +120,97 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-surface rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md p-6 shadow-xl animate-in slide-in-from-bottom sm:fade-in sm:zoom-in duration-200 border-t sm:border border-slate-200 dark:border-slate-700">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-surface rounded-2xl w-full max-w-sm shadow-xl animate-in fade-in zoom-in duration-200 h-auto max-h-[90dvh] flex flex-col border border-slate-700">
                 {/* Header */}
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex justify-between items-center p-6 pb-2 flex-none">
                     <h2 className="text-xl font-bold text-text-primary">
                         Hızlı İşlem
                     </h2>
-                    <button onClick={onClose} className="p-2 text-text-secondary hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
-                        <X size={24} />
+                    <button onClick={onClose} className="p-2 hover:bg-slate-700/50 rounded-full">
+                        <X size={20} className="text-text-secondary" />
                     </button>
                 </div>
 
-                <p className="text-sm text-text-secondary mb-4">
-                    {contactName} ile işlem
-                </p>
+                <div className="flex-1 overflow-y-auto p-6 pt-2">
+                    <p className="text-sm text-text-secondary mb-4">
+                        {contactName} ile işlem
+                    </p>
 
-                <form onSubmit={handleSubmit} className="space-y-5">
-                    {/* Direction Toggle */}
-                    <div className="grid grid-cols-2 gap-3">
+                    <form onSubmit={handleSubmit} className="space-y-5">
+                        {/* Direction Toggle */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setDirection('OUTGOING')}
+                                className={clsx(
+                                    "flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-sm transition-all border-2",
+                                    direction === 'OUTGOING'
+                                        ? "bg-green-100 border-green-500 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                        : "bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400"
+                                )}
+                            >
+                                <ArrowUpRight size={20} />
+                                Verdim
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setDirection('INCOMING')}
+                                className={clsx(
+                                    "flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-sm transition-all border-2",
+                                    direction === 'INCOMING'
+                                        ? "bg-red-100 border-red-500 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                                        : "bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400"
+                                )}
+                            >
+                                <ArrowDownLeft size={20} />
+                                Aldım
+                            </button>
+                        </div>
+
+                        {/* Amount */}
+                        <div>
+                            <label className="block text-sm font-medium text-text-secondary mb-2">Tutar (₺)</label>
+                            <input
+                                type="text"
+                                inputMode="decimal"
+                                value={amount}
+                                onChange={(e) => setAmount(e.target.value)}
+                                placeholder="0"
+                                className="w-full px-4 py-4 text-3xl font-bold text-center rounded-xl border border-slate-200 dark:border-slate-700 bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none"
+                                required
+                                autoFocus
+                            />
+                        </div>
+
+                        {/* Description */}
+                        <div>
+                            <label className="block text-sm font-medium text-text-secondary mb-2">Açıklama (Opsiyonel)</label>
+                            <input
+                                type="text"
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                placeholder="Örn: Öğle yemeği"
+                                className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none"
+                            />
+                        </div>
+
+                        {/* Submit */}
                         <button
-                            type="button"
-                            onClick={() => setDirection('OUTGOING')}
+                            type="submit"
+                            disabled={submitting || !amount}
                             className={clsx(
-                                "flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-sm transition-all border-2",
+                                "w-full py-4 rounded-xl font-bold text-white transition-all",
                                 direction === 'OUTGOING'
-                                    ? "bg-green-100 border-green-500 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                                    : "bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400"
+                                    ? "bg-green-600 hover:bg-green-700"
+                                    : "bg-red-600 hover:bg-red-700",
+                                (submitting || !amount) && "opacity-50 cursor-not-allowed"
                             )}
                         >
-                            <ArrowUpRight size={20} />
-                            Verdim
+                            {submitting ? 'Ekleniyor...' : (direction === 'OUTGOING' ? '💸 Verdim Olarak Ekle' : '💰 Aldım Olarak Ekle')}
                         </button>
-                        <button
-                            type="button"
-                            onClick={() => setDirection('INCOMING')}
-                            className={clsx(
-                                "flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-sm transition-all border-2",
-                                direction === 'INCOMING'
-                                    ? "bg-red-100 border-red-500 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                                    : "bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400"
-                            )}
-                        >
-                            <ArrowDownLeft size={20} />
-                            Aldım
-                        </button>
-                    </div>
-
-                    {/* Amount */}
-                    <div>
-                        <label className="block text-sm font-medium text-text-secondary mb-2">Tutar (₺)</label>
-                        <input
-                            type="text"
-                            inputMode="decimal"
-                            value={amount}
-                            onChange={(e) => setAmount(e.target.value)}
-                            placeholder="0"
-                            className="w-full px-4 py-4 text-3xl font-bold text-center rounded-xl border border-slate-200 dark:border-slate-700 bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none"
-                            required
-                            autoFocus
-                        />
-                    </div>
-
-                    {/* Description */}
-                    <div>
-                        <label className="block text-sm font-medium text-text-secondary mb-2">Açıklama (Opsiyonel)</label>
-                        <input
-                            type="text"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            placeholder="Örn: Öğle yemeği"
-                            className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none"
-                        />
-                    </div>
-
-                    {/* Submit */}
-                    <button
-                        type="submit"
-                        disabled={submitting || !amount}
-                        className={clsx(
-                            "w-full py-4 rounded-xl font-bold text-white transition-all",
-                            direction === 'OUTGOING'
-                                ? "bg-green-600 hover:bg-green-700"
-                                : "bg-red-600 hover:bg-red-700",
-                            (submitting || !amount) && "opacity-50 cursor-not-allowed"
-                        )}
-                    >
-                        {submitting ? 'Ekleniyor...' : (direction === 'OUTGOING' ? '💸 Verdim Olarak Ekle' : '💰 Aldım Olarak Ekle')}
-                    </button>
-                </form>
+                    </form>
+                </div>
             </div>
         </div>
     );

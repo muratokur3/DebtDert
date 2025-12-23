@@ -79,6 +79,23 @@ export const PersonDetail = () => {
         });
     };
 
+    // NEW: Listen for bottom nav trigger event
+    useEffect(() => {
+        const handleBottomNavTrigger = () => {
+            if (isBlocked) return;
+            if (activeViewIndex === 0) {
+                // Stream view -> Quick Transaction
+                setShowQuickTransactionModal(true);
+            } else {
+                // Special view -> Open Create Debt Modal
+                setShowCreateDebtModal(true);
+            }
+        };
+
+        window.addEventListener('trigger-person-fab-action', handleBottomNavTrigger);
+        return () => window.removeEventListener('trigger-person-fab-action', handleBottomNavTrigger);
+    }, [activeViewIndex, isBlocked]);
+
 
 
     // Helper to get target UID safely
@@ -794,30 +811,6 @@ export const PersonDetail = () => {
                     </div>
                 </div>
             </main>
-
-            {/* Context-Aware FAB */}
-            {contactId && !isBlocked && (
-                <button
-                    onClick={() => {
-                        if (activeViewIndex === 0) {
-                            // Stream view -> Quick Transaction
-                            setShowQuickTransactionModal(true);
-                        } else {
-                            // Special view -> Open Create Debt Modal
-                            setShowCreateDebtModal(true);
-                        }
-                    }}
-                    className={clsx(
-                        "fixed bottom-24 right-6 w-14 h-14 rounded-full text-white shadow-xl flex items-center justify-center transition-all active:scale-95 z-40",
-                        activeViewIndex === 0
-                            ? "bg-purple-600 hover:bg-purple-700" // Stream: Purple
-                            : "bg-blue-600 hover:bg-blue-700"     // Special: Blue
-                    )}
-                    title={activeViewIndex === 0 ? "Hızlı İşlem Ekle" : "Özel İşlem Ekle"}
-                >
-                    <Plus size={28} />
-                </button>
-            )}
 
             {/* Quick Transaction Modal */}
             <QuickTransactionModal

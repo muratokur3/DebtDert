@@ -5,12 +5,13 @@ import { useAuth } from '../hooks/useAuth';
 import { useDebts } from '../hooks/useDebts';
 import { useContactName } from '../hooks/useContactName';
 import { ArrowLeft, Phone, MessageCircle, Trash2, Edit2, X, MoreVertical, Ban, UserPlus, VolumeX, Volume2, FolderOpen, Plus, ChevronRight, ChevronLeft } from 'lucide-react';
-import { searchUserByPhone, getContacts, updateContact, addContact, deleteContact, muteUser, unmuteUser, markContactAsRead } from '../services/db';
+import { searchUserByPhone, getContacts, updateContact, addContact, deleteContact, muteUser, unmuteUser, markContactAsRead, createDebt } from '../services/db';
 import { blockUser, isUserBlocked, unblockUser } from '../services/blockService'; // Import block services
 import { Avatar } from '../components/Avatar';
 import { DebtCard } from '../components/DebtCard';
 import { TransactionList } from '../components/TransactionList';
 import { QuickTransactionModal } from '../components/QuickTransactionModal';
+import { CreateDebtModal } from '../components/CreateDebtModal';
 import { PhoneInput } from '../components/PhoneInput';
 import { formatCurrency } from '../utils/format';
 import { convertToTRY, fetchRates, type CurrencyRates } from '../services/currency';
@@ -42,6 +43,7 @@ export const PersonDetail = () => {
     const [lastReadTimestamp, setLastReadTimestamp] = useState<number | null>(null); // New State
     const [showEditModal, setShowEditModal] = useState(false);
     const [showQuickTransactionModal, setShowQuickTransactionModal] = useState(false); // NEW: Quick Transaction Modal
+    const [showCreateDebtModal, setShowCreateDebtModal] = useState(false); // NEW: Create Debt Modal for Özel İşlemler
     const [activeViewIndex, setActiveViewIndex] = useState(0); // NEW: 0 = Akış (Stream), 1 = Özel İşlemler (Special)
     const scrollContainerRef = useRef<HTMLDivElement>(null); // NEW: Scroll container ref
     const [editName, setEditName] = useState('');
@@ -801,8 +803,8 @@ export const PersonDetail = () => {
                             // Stream view -> Quick Transaction
                             setShowQuickTransactionModal(true);
                         } else {
-                            // Special view -> Navigate to add debt (or open debt modal)
-                            navigate('/debt/new', { state: { preselectedContact: { id: contactId, name: personInfo.name, phone: personInfo.phone } } });
+                            // Special view -> Open Create Debt Modal
+                            setShowCreateDebtModal(true);
                         }
                     }}
                     className={clsx(
@@ -823,6 +825,44 @@ export const PersonDetail = () => {
                 onClose={() => setShowQuickTransactionModal(false)}
                 contactId={contactId || ''}
                 contactName={personInfo.name}
+            />
+
+            {/* Create Debt Modal (for Özel İşlemler) */}
+            <CreateDebtModal
+                isOpen={showCreateDebtModal}
+                onClose={() => setShowCreateDebtModal(false)}
+                onSubmit={async (
+                    borrowerId: string,
+                    borrowerName: string,
+                    amount: number,
+                    type: 'LENDING' | 'BORROWING',
+                    currency: string,
+                    note?: string,
+                    dueDate?: Date,
+                    installments?: any[],
+                    canBorrowerAddPayment?: boolean,
+                    initialPayment?: number
+                ) => {
+                    if (!user) return;
+                    await createDebt(
+                        user.uid,
+                        user.displayName || 'Bilinmeyen',
+                        borrowerId,
+                        borrowerName,
+                        amount,
+                        type,
+                        currency,
+                        note,
+                        dueDate,
+                        installments,
+                        canBorrowerAddPayment,
+                        initialPayment || 0
+                    );
+                    setShowCreateDebtModal(false);
+                }}
+                targetUser={targetUserObject}
+                initialPhoneNumber={personInfo.phone}
+                initialName={personInfo.name}
             />
 
             {/* Edit Modal */}

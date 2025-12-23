@@ -190,7 +190,8 @@ export const subscribeLedgerTransactions = (
     callback: (transactions: Transaction[]) => void
 ): (() => void) => {
     const txRef = getLedgerTransactionsRef(ledgerId);
-    const q = query(txRef, orderBy('createdAt', 'desc'));
+    // Order ascending: oldest first (like WhatsApp chat)
+    const q = query(txRef, orderBy('createdAt', 'asc'));
 
     return onSnapshot(q, (snapshot) => {
         const transactions: Transaction[] = snapshot.docs.map(docSnap => ({

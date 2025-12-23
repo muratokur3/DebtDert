@@ -1,21 +1,24 @@
 /**
- * PersonStream - WhatsApp-style Transaction Stream
- * Clean chat interface with inverted scroll
+ * PersonStream - Dual-View Transaction Interface
+ * Swipeable between Stream (Chat) and Special Files
  */
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useDebts } from '../hooks/useDebts';
 import { useContactName } from '../hooks/useContactName';
-import { ArrowLeft, Plus, Minus } from 'lucide-react';
-import { searchUserByPhone, getContacts, markContactAsRead } from '../services/db';
+import { ArrowLeft, Plus, Minus, FolderOpen, ChevronRight, ChevronLeft } from 'lucide-react';
+import { searchUserByPhone, getContacts, markContactAsRead, createDebt } from '../services/db';
 import { isUserBlocked } from '../services/blockService';
 import { Avatar } from '../components/Avatar';
 import { TransactionList } from '../components/TransactionList';
+import { DebtCard } from '../components/DebtCard';
 import { QuickTransactionModal } from '../components/QuickTransactionModal';
+import { CreateDebtModal } from '../components/CreateDebtModal';
 import { formatCurrency } from '../utils/format';
 import { cleanPhone as cleanPhoneNumber } from '../utils/phoneUtils';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import clsx from 'clsx';
 import { useModal } from '../context/ModalContext';
@@ -27,19 +30,23 @@ export const PersonStream = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
+    const { allDebts: debts } = useDebts();
     const { resolveName } = useContactName();
     const { showAlert } = useModal();
+    
+    // Refs
     const streamRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     // State
     const [targetUserObject, setTargetUserObject] = useState<User | Contact | null>(null);
     const [contactId, setContactId] = useState<string | null>(null);
     const [isBlocked, setIsBlocked] = useState(false);
     const [showQuickModal, setShowQuickModal] = useState(false);
-    const [quickDirection, setQuickDirection] = useState<'OUTGOING' | 'INCOMING'>('OUTGOING');
-
-    // Resolve UID
+    const [showCreateDebtModal, setShowCreateDebtModal] = useState(false);
+    const [activeViewIndex, setActiveViewIndex] = useState(0); // 0 = Stream, 1 = Special Files
     const [resolvedUid, setResolvedUid] = useState<string | null>(null);
+    const [lastReadTimestamp, setLastReadTimestamp] = useState<number | null>(null);
 
     // Get target UID
     const getTargetUid = () => {
@@ -58,7 +65,6 @@ export const PersonStream = () => {
         const fetchTarget = async () => {
             const cleanId = cleanPhoneNumber(id);
             
-            // Check if it's a UID
             if (id.length > 20) {
                 const userDoc = await getDoc(doc(db, 'users', id));
                 if (userDoc.exists()) {
@@ -66,7 +72,6 @@ export const PersonStream = () => {
                     setResolvedUid(id);
                 }
             } else {
-                // Phone number - try to find user
                 const foundUser = await searchUserByPhone(cleanId);
                 if (foundUser) {
                     setTargetUserObject(foundUser);
@@ -74,17 +79,16 @@ export const PersonStream = () => {
                 }
             }
 
-            // Find contact
             const contacts = await getContacts(user.uid);
             const contact = contacts.find(c => 
                 cleanPhoneNumber(c.phoneNumber) === cleanId || c.id === id
             );
             if (contact) {
                 setContactId(contact.id);
+                setLastReadTimestamp(contact.lastReadAt?.toMillis() || null);
                 if (!targetUserObject) setTargetUserObject(contact);
             }
 
-            // Check blocked status
             const targetUid = getTargetUid() || id;
             if (targetUid) {
                 const blocked = await isUserBlocked(user.uid, targetUid);
@@ -103,16 +107,10 @@ export const PersonStream = () => {
         let phone = id && id.length > 20 ? '' : cleanPhoneNumber(id || '');
 
         if (targetUserObject) {
-            if ('displayName' in targetUserObject) {
-                name = targetUserObject.displayName || name;
-            } else if ('name' in targetUserObject) {
-                name = targetUserObject.name || name;
-            }
-            if ('primaryPhoneNumber' in targetUserObject) {
-                phone = targetUserObject.primaryPhoneNumber || phone;
-            } else if ('phoneNumber' in targetUserObject) {
-                phone = targetUserObject.phoneNumber || phone;
-            }
+            if ('displayName' in targetUserObject) name = targetUserObject.displayName || name;
+            else if ('name' in targetUserObject) name = targetUserObject.name || name;
+            if ('primaryPhoneNumber' in targetUserObject) phone = targetUserObject.primaryPhoneNumber || phone;
+            else if ('phoneNumber' in targetUserObject) phone = targetUserObject.phoneNumber || phone;
         }
 
         const { displayName } = resolveName(id || '', name);
@@ -121,30 +119,61 @@ export const PersonStream = () => {
 
     // Ledger hook
     const otherPartyId = getTargetUid() || id;
-    const { 
-        ledgerId, 
-        transactions, 
-        loading: txLoading, 
-        balance: cariBalance 
-    } = useLedger(
+    const { ledgerId, transactions, loading: txLoading, balance: cariBalance } = useLedger(
         user?.uid,
         user?.displayName,
         otherPartyId || undefined,
         personInfo.name
     );
 
-    // Scroll to bottom on new transactions
+    // Filter special debts (non-LEDGER)
+    const personDebts = useMemo(() => {
+        if (!debts || !id || !user) return [];
+        const cleanId = cleanPhoneNumber(id);
+
+        return debts.filter(d => {
+            if (d.type === 'LEDGER') return false;
+
+            const isLender = d.lenderId === user.uid;
+            const otherId = isLender ? d.borrowerId : d.lenderId;
+            const cleanOtherId = cleanPhoneNumber(otherId);
+
+            const isMatch = otherId === id ||
+                cleanOtherId === cleanId ||
+                d.participants.includes(id) ||
+                (resolvedUid && otherId === resolvedUid);
+
+            if (!isMatch) return false;
+
+            const amICreator = d.createdBy === user.uid;
+            if (amICreator) return true;
+            if (d.status === 'REJECTED_BY_RECEIVER' || d.status === 'AUTO_HIDDEN') return false;
+            return true;
+        });
+    }, [debts, id, user, resolvedUid]);
+
+    // Scroll handlers
+    const handleScroll = () => {
+        const container = scrollContainerRef.current;
+        if (!container) return;
+        const scrollLeft = container.scrollLeft;
+        const viewWidth = container.offsetWidth;
+        const newIndex = Math.round(scrollLeft / viewWidth);
+        if (newIndex !== activeViewIndex) setActiveViewIndex(newIndex);
+    };
+
+    const scrollToView = (index: number) => {
+        const container = scrollContainerRef.current;
+        if (!container) return;
+        container.scrollTo({ left: index * container.offsetWidth, behavior: 'smooth' });
+    };
+
+    // Scroll stream to bottom
     useEffect(() => {
-        if (streamRef.current && transactions.length > 0) {
+        if (streamRef.current && transactions.length > 0 && activeViewIndex === 0) {
             streamRef.current.scrollTop = streamRef.current.scrollHeight;
         }
-    }, [transactions]);
-
-    // Open quick modal with direction
-    const openQuickAdd = (direction: 'OUTGOING' | 'INCOMING') => {
-        setQuickDirection(direction);
-        setShowQuickModal(true);
-    };
+    }, [transactions, activeViewIndex]);
 
     if (!user) {
         return <div className="min-h-screen flex items-center justify-center">Yükleniyor...</div>;
@@ -176,11 +205,7 @@ export const PersonStream = () => {
                         "text-sm font-medium",
                         cariBalance > 0 ? "text-green-600" : cariBalance < 0 ? "text-red-600" : "text-text-secondary"
                     )}>
-                        {cariBalance === 0 ? "Hesap Denk" : (
-                            <>
-                                {cariBalance > 0 ? "+" : ""}{formatCurrency(cariBalance, 'TRY')}
-                            </>
-                        )}
+                        {cariBalance === 0 ? "Hesap Denk" : `${cariBalance > 0 ? "+" : ""}${formatCurrency(cariBalance, 'TRY')}`}
                     </p>
                 </div>
             </header>
@@ -192,48 +217,144 @@ export const PersonStream = () => {
                 </div>
             )}
 
-            {/* Transaction Stream - Flex column-reverse for bottom anchoring */}
-            <div 
-                ref={streamRef}
-                className="flex-1 overflow-y-auto px-4 py-4 flex flex-col"
-            >
-                {txLoading ? (
-                    <div className="flex-1 flex items-center justify-center text-text-secondary">
-                        Yükleniyor...
-                    </div>
-                ) : ledgerId ? (
-                    <TransactionList
-                        transactions={transactions}
-                        ledgerId={ledgerId}
-                    />
-                ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-text-secondary">
-                        <div className="text-4xl mb-3 opacity-50">💸</div>
-                        <p className="font-medium">Henüz işlem yok</p>
-                        <p className="text-sm opacity-70">Aşağıdaki butonlarla ilk işlemi ekleyin</p>
-                    </div>
-                )}
+            {/* View Tabs */}
+            <div className="flex items-center justify-center gap-4 py-2 border-b border-border bg-surface">
+                <button
+                    onClick={() => scrollToView(0)}
+                    className={clsx(
+                        "px-4 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1",
+                        activeViewIndex === 0
+                            ? "bg-purple-600 text-white"
+                            : "text-text-secondary hover:bg-slate-100 dark:hover:bg-slate-800"
+                    )}
+                >
+                    Akış
+                    {transactions.length > 0 && (
+                        <span className="bg-white/20 dark:bg-black/20 px-1.5 py-0.5 rounded text-xs">{transactions.length}</span>
+                    )}
+                </button>
+                <button
+                    onClick={() => scrollToView(1)}
+                    className={clsx(
+                        "px-4 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1",
+                        activeViewIndex === 1
+                            ? "bg-blue-600 text-white"
+                            : "text-text-secondary hover:bg-slate-100 dark:hover:bg-slate-800"
+                    )}
+                >
+                    <FolderOpen size={14} />
+                    Özel
+                    {personDebts.length > 0 && (
+                        <span className="bg-white/20 dark:bg-black/20 px-1.5 py-0.5 rounded text-xs">{personDebts.length}</span>
+                    )}
+                </button>
             </div>
 
-            {/* Quick Add Footer */}
+            {/* Swipeable Container */}
+            <div
+                ref={scrollContainerRef}
+                onScroll={handleScroll}
+                className="flex-1 flex overflow-x-auto snap-x snap-mandatory scroll-smooth hide-scrollbar"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            >
+                {/* View 0: Stream */}
+                <div className="snap-start shrink-0 w-full flex flex-col">
+                    <div 
+                        ref={streamRef}
+                        className="flex-1 overflow-y-auto px-4 py-4"
+                    >
+                        {txLoading ? (
+                            <div className="h-full flex items-center justify-center text-text-secondary">Yükleniyor...</div>
+                        ) : ledgerId && transactions.length > 0 ? (
+                            <TransactionList transactions={transactions} ledgerId={ledgerId} />
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-text-secondary">
+                                <div className="text-4xl mb-3 opacity-50">💸</div>
+                                <p className="font-medium">Henüz işlem yok</p>
+                                <p className="text-sm opacity-70">Aşağıdaki butonlarla ilk işlemi ekleyin</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Swipe Hint */}
+                    {personDebts.length > 0 && activeViewIndex === 0 && (
+                        <div className="fixed right-2 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 text-blue-500 opacity-50 animate-pulse pointer-events-none">
+                            <ChevronRight size={24} />
+                            <span className="text-[10px] font-medium rotate-90 origin-center whitespace-nowrap">Özel</span>
+                        </div>
+                    )}
+                </div>
+
+                {/* View 1: Special Files */}
+                <div className="snap-start shrink-0 w-full overflow-y-auto px-4 py-4">
+                    {personDebts.length > 0 ? (
+                        <div className="space-y-2">
+                            {personDebts.map(debt => {
+                                const isMyEntry = debt.createdBy === user?.uid;
+                                const isNew = !isMyEntry && lastReadTimestamp && debt.createdAt && debt.createdAt.toMillis() > lastReadTimestamp;
+                                return (
+                                    <div key={debt.id} className={clsx("flex w-full", isMyEntry ? "justify-end" : "justify-start")}>
+                                        <div className="w-[85%]">
+                                            <DebtCard
+                                                debt={debt}
+                                                isNew={!!isNew}
+                                                currentUserId={user?.uid || ''}
+                                                onClick={() => navigate(`/debt/${debt.id}`)}
+                                                disabled={isBlocked}
+                                                variant="chat"
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="h-full flex flex-col items-center justify-center text-text-secondary">
+                            <FolderOpen size={32} className="mb-3 opacity-40" />
+                            <p className="font-medium">Özel işlem yok</p>
+                            <p className="text-sm opacity-70">Taksitli veya karmaşık borçlar burada görünecek</p>
+                        </div>
+                    )}
+
+                    {/* Back Hint */}
+                    {activeViewIndex === 1 && (
+                        <div className="fixed left-2 top-1/2 -translate-y-1/2 flex flex-col items-center gap-1 text-purple-500 opacity-50 animate-pulse pointer-events-none">
+                            <ChevronLeft size={24} />
+                            <span className="text-[10px] font-medium -rotate-90 origin-center whitespace-nowrap">Akış</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Footer - Context Aware */}
             {!isBlocked && (
                 <div className="sticky bottom-0 bg-surface border-t border-border px-4 py-3 pb-safe">
-                    <div className="flex gap-3">
+                    {activeViewIndex === 0 ? (
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowQuickModal(true)}
+                                className="flex-1 flex items-center justify-center gap-2 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-all active:scale-95"
+                            >
+                                <Plus size={20} />
+                                Verdim
+                            </button>
+                            <button
+                                onClick={() => setShowQuickModal(true)}
+                                className="flex-1 flex items-center justify-center gap-2 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold transition-all active:scale-95"
+                            >
+                                <Minus size={20} />
+                                Aldım
+                            </button>
+                        </div>
+                    ) : (
                         <button
-                            onClick={() => openQuickAdd('OUTGOING')}
-                            className="flex-1 flex items-center justify-center gap-2 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-all active:scale-95"
+                            onClick={() => setShowCreateDebtModal(true)}
+                            className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-all active:scale-95"
                         >
-                            <Plus size={20} />
-                            Verdim
+                            <FolderOpen size={20} />
+                            Özel İşlem Ekle
                         </button>
-                        <button
-                            onClick={() => openQuickAdd('INCOMING')}
-                            className="flex-1 flex items-center justify-center gap-2 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-semibold transition-all active:scale-95"
-                        >
-                            <Minus size={20} />
-                            Aldım
-                        </button>
-                    </div>
+                    )}
                 </div>
             )}
 
@@ -247,6 +368,20 @@ export const PersonStream = () => {
                 userName={user?.displayName}
                 otherPartyId={otherPartyId || undefined}
                 otherPartyName={personInfo.name}
+            />
+
+            {/* Create Debt Modal */}
+            <CreateDebtModal
+                isOpen={showCreateDebtModal}
+                onClose={() => setShowCreateDebtModal(false)}
+                onSubmit={async (borrowerId, borrowerName, amount, type, currency, note, dueDate, installments, canBorrowerAddPayment, initialPayment) => {
+                    if (!user) return;
+                    await createDebt(user.uid, user.displayName || 'Bilinmeyen', borrowerId, borrowerName, amount, type, currency, note, dueDate, installments, canBorrowerAddPayment, initialPayment || 0);
+                    setShowCreateDebtModal(false);
+                }}
+                targetUser={targetUserObject}
+                initialPhoneNumber={personInfo.phone}
+                initialName={personInfo.name}
             />
         </div>
     );

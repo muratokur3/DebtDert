@@ -325,54 +325,27 @@ export const PersonProfile = () => {
                     currentUserId={user?.uid || ''}
                 />
 
-                {/* Special Debts Section */}
-                {personDebts.length > 0 && (
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <h3 className="font-semibold text-text-primary flex items-center gap-2">
-                                <FolderOpen size={18} />
-                                Özel İşlemler ({personDebts.length})
-                            </h3>
-                            <button
-                                onClick={() => setShowCreateDebtModal(true)}
-                                className="text-sm text-purple-600 font-medium"
-                            >
-                                + Yeni Ekle
-                            </button>
-                        </div>
-                        <div className="space-y-2">
-                            {personDebts.map(debt => {
-                                const isMyEntry = debt.createdBy === user?.uid;
-                                const isNew = !isMyEntry && lastReadTimestamp && debt.createdAt && debt.createdAt.toMillis() > lastReadTimestamp;
-                                return (
-                                    <DebtCard
-                                        key={debt.id}
-                                        debt={debt}
-                                        isNew={!!isNew}
-                                        currentUserId={user?.uid || ''}
-                                        onClick={() => navigate(`/debt/${debt.id}`)}
-                                        disabled={isBlocked}
-                                        variant="default"
-                                    />
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
-                {/* No Special Debts */}
-                {personDebts.length === 0 && (
-                    <div className="text-center py-8">
-                        <button
-                            onClick={() => setShowCreateDebtModal(true)}
-                            className="inline-flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold transition-all"
-                        >
-                            <FolderOpen size={18} />
-                            Özel İşlem Ekle
-                        </button>
-                        <p className="text-sm text-text-secondary mt-2">Taksitli veya karmaşık borçlar için</p>
-                    </div>
-                )}
+                {/* Quick Navigation to Lists */}
+                <div className="grid grid-cols-2 gap-3">
+                    <button
+                        onClick={() => navigate(`/person/${id}`, { state: { name: personInfo.name } })}
+                        className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-2xl border border-purple-200 dark:border-purple-800 text-left"
+                    >
+                        <p className="text-xs text-purple-600 dark:text-purple-400 mb-1">Akış İşlemleri</p>
+                        <p className="text-lg font-bold text-purple-700 dark:text-purple-300">{transactions.length} işlem</p>
+                    </button>
+                    <button
+                        onClick={() => {
+                            navigate(`/person/${id}`, { state: { name: personInfo.name } });
+                            // Small delay to allow navigation, then scroll to special
+                            setTimeout(() => window.dispatchEvent(new CustomEvent('scroll-to-special')), 100);
+                        }}
+                        className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-200 dark:border-blue-800 text-left"
+                    >
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">Özel İşlemler</p>
+                        <p className="text-lg font-bold text-blue-700 dark:text-blue-300">{personDebts.length} dosya</p>
+                    </button>
+                </div>
             </main>
 
             {/* Create Debt Modal */}

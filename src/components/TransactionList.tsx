@@ -36,18 +36,19 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     const handleDelete = async (txId: string) => {
         if (!user) return;
         
-        showConfirm(
+        const confirmed = await showConfirm(
             "Kaydı Sil",
-            "Bu işlem geri alınamaz. Kayıt tamamen silinecek. Emin misin?",
-            async () => {
-                try {
-                    await deleteLedgerTransaction(ledgerId, txId);
-                } catch (error) {
-                    console.error(error);
-                    showAlert("Hata", "Silme işlemi başarısız.", "error");
-                }
-            }
+            "Bu işlem geri alınamaz. Kayıt tamamen silinecek. Emin misin?"
         );
+
+        if (confirmed) {
+            try {
+                await deleteLedgerTransaction(ledgerId, txId);
+            } catch (error) {
+                console.error(error);
+                showAlert("Hata", "Silme işlemi başarısız.", "error");
+            }
+        }
     };
 
     const handleEdit = (tx: Transaction) => {

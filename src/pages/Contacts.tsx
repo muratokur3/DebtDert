@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { getContacts, deleteContact, updateContact, createDebt, batchAddContacts } from '../services/db';
 import type { Contact } from '../types';
-import { Search, ArrowLeft, Wallet, X, Ban, Edit2 } from 'lucide-react';
+import { Search, ArrowLeft, Wallet, X, Ban, Edit2, Trash2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { SwipeableItem } from '../components/SwipeableItem';
+import { SwipeableItem, type SwipeAction } from '../components/SwipeableItem';
 import { Avatar } from '../components/Avatar';
 import { formatPhoneForDisplay as formatPhoneNumber } from '../utils/phoneUtils';
 import { CreateDebtModal } from '../components/CreateDebtModal';
@@ -37,6 +37,16 @@ export const Contacts = () => {
     const [contactAccessEnabled, setContactAccessEnabled] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [initialPhone, setInitialPhone] = useState('');
+    const [openRowId, setOpenRowId] = useState<string | null>(null);
+
+    // Auto-Reset: Click anywhere else closes row
+    useEffect(() => {
+        const handleClickOutside = () => {
+            if (openRowId) setOpenRowId(null);
+        };
+        window.addEventListener('click', handleClickOutside);
+        return () => window.removeEventListener('click', handleClickOutside);
+    }, [openRowId]);
 
     useEffect(() => {
         const saved = localStorage.getItem('contact_access_enabled');
@@ -328,10 +338,25 @@ export const Contacts = () => {
                                 <div className="bg-surface divide-y divide-border border-b border-border last:border-0">
                                     {groupedContacts[letter].map(contact => {
                                         const blocked = isContactBlocked(contact);
+
+                                        // Configure Right Actions (Delete)
+                                        const rightActions: SwipeAction[] = [
+                                            {
+                                                key: 'delete',
+                                                icon: <Trash2 size={20} />,
+                                                label: 'Sil',
+                                                color: 'bg-red-500',
+                                                onClick: () => handleDeleteContact(contact.id)
+                                            }
+                                        ];
+
                                         return (
                                             <SwipeableItem
                                                 key={contact.id}
-                                                onSwipeLeft={() => handleDeleteContact(contact.id)}
+                                                rightActions={rightActions}
+                                                isOpen={openRowId === `${contact.id}_right` ? 'right' : null}
+                                                onOpen={(dir) => setOpenRowId(`${contact.id}_${dir}`)}
+                                                onClose={() => setOpenRowId(null)}
                                                 className="mb-0"
                                             >
                                                 <div className="p-4 pl-5 flex items-center justify-between hover:bg-background/50 transition-colors min-h-[72px]">

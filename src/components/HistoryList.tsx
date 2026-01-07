@@ -7,7 +7,7 @@ import { History, Wallet, X, MoreVertical } from 'lucide-react';
 import { rejectPayment } from '../services/db';
 import { useAuth } from '../hooks/useAuth';
 import clsx from 'clsx';
-import { SwipeableItem } from './SwipeableItem';
+import { SwipeableItem, type SwipeAction } from './SwipeableItem';
 
 import { useModal } from '../context/ModalContext';
 
@@ -21,10 +21,18 @@ interface HistoryListProps {
 export const HistoryList: React.FC<HistoryListProps> = ({ logs, currency, isLender, debtId }) => {
     const { showAlert, showConfirm } = useModal();
     const { user } = useAuth();
-
-
-
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+    const [openRowId, setOpenRowId] = useState<string | null>(null);
+
+    // Auto-Reset: Click anywhere else closes row
+    useEffect(() => {
+        const handleClickOutside = () => {
+            if (openRowId) setOpenRowId(null);
+            if (openMenuId) setOpenMenuId(null);
+        };
+        window.addEventListener('click', handleClickOutside);
+        return () => window.removeEventListener('click', handleClickOutside);
+    }, [openRowId, openMenuId]);
 
     const toggleMenu = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -34,13 +42,6 @@ export const HistoryList: React.FC<HistoryListProps> = ({ logs, currency, isLend
             setOpenMenuId(id);
         }
     };
-
-    // Close menu when clicking outside
-    useEffect(() => {
-        const handleClickOutside = () => setOpenMenuId(null);
-        document.addEventListener('click', handleClickOutside);
-        return () => document.removeEventListener('click', handleClickOutside);
-    }, []);
 
     const handleReject = async (paymentId: string) => {
         if (!user) return;
@@ -80,12 +81,25 @@ export const HistoryList: React.FC<HistoryListProps> = ({ logs, currency, isLend
             <div className="space-y-3">
                 {logs.map((log) => {
                     const isMine = log.performedBy === user?.uid;
+
+                    const rightActions: SwipeAction[] = [];
+                    if (canReject(log)) {
+                        rightActions.push({
+                            key: 'reject',
+                            icon: <X size={20} className="text-white" />,
+                            label: 'Reddet',
+                            color: 'bg-red-500',
+                            onClick: () => handleReject(log.id)
+                        });
+                    }
+
                     return (
                         <SwipeableItem
                             key={log.id}
-                            onSwipeLeft={canReject(log) ? () => handleReject(log.id) : undefined}
-                            leftActionColor="bg-red-500"
-                            leftActionIcon={<X size={20} className="text-white" />}
+                            rightActions={rightActions}
+                            isOpen={openRowId === `${log.id}_right` ? 'right' : null}
+                            onOpen={(dir) => setOpenRowId(`${log.id}_${dir}`)}
+                            onClose={() => setOpenRowId(null)}
                             className="mb-3"
                             contentClassName="bg-background" // Match page bg
                         >

@@ -50,6 +50,8 @@ export const PersonStream = () => {
     const [lastReadTimestamp, setLastReadTimestamp] = useState<number | null>(null);
     const [openRowId, setOpenRowId] = useState<string | null>(null);
 
+    const [editingDebt, setEditingDebt] = useState<any | null>(null);
+
     // Auto-Reset: Click anywhere else closes row
     useEffect(() => {
         const handleClickOutside = () => {
@@ -292,43 +294,19 @@ export const PersonStream = () => {
     };
 
     const handleDebtEdit = (debt: any) => {
-        // We'll need to trigger CreateDebtModal in Edit Mode
-        // But `CreateDebtModal` is already rendered below with state.
-        // We need to pass the debt to it.
-        // This component doesn't support Edit Mode state yet for CreateDebtModal (it uses showCreateDebtModal boolean)
-        // Wait, CreateDebtModal supports `editMode` prop.
-        // I need to add state for `editingDebt`
-        // Actually, PersonStream uses CreateDebtModal for *Create*.
-        // Debt editing usually happens in `DebtDetail` or `EditDebtModal`.
-        // I should re-use `CreateDebtModal` for editing here as requested by "Hard Reset" logic which uses CreateDebtModal.
-        // Let's add `editingDebt` state.
         setEditingDebt(debt);
     };
 
     const handleDebtComplete = async (debt: any) => {
         // "Tamamla" -> Mark as Paid / Forgive?
-        // If I am lender, I can forgive.
-        if (debt.lenderId === user?.uid) {
-             // Forgive
-             showAlert("Bilgi", "Borcu tamamlama (silme/hibe) henüz swipe ile aktif değil. Detaydan yapınız.", "info");
-        } else {
-             showAlert("Bilgi", "Borcu tamamlama (ödeme bildirimi) henüz swipe ile aktif değil. Detaydan yapınız.", "info");
-        }
+        showAlert("Bilgi", "Borcu tamamlama (silme/hibe) henüz swipe ile aktif değil. Detaydan yapınız.", "info");
     };
 
     const handleDebtHide = async (debtId: string) => {
-        // Hide/Archive
-        // Soft delete was removed? "No Trash".
-        // Maybe "Mute"?
-        // Or "Auto-Hidden"?
-        // If Archive is gone, Hide means ???
-        // User said: "Button 2 (Inner Left): [ 👁️‍🗨️ Gizle ] (Hide/Archive)"
-        // But also said "No Trash/Archive".
-        // I will just show alert "Archiving is disabled per strict rules".
+        // Hide/Archive is disabled per "1 Hour Rule" / "Exist or Don't Exist" policy.
         showAlert("Bilgi", "Arşivleme özelliği '1 Saat Kuralı' gereği kaldırılmıştır.", "info");
     };
 
-    const [editingDebt, setEditingDebt] = useState<any | null>(null);
 
     if (!user) return <div className="min-h-screen flex items-center justify-center">Yükleniyor...</div>;
 
@@ -455,15 +433,33 @@ export const PersonStream = () => {
                                     });
                                 }
 
+                                // Restore Left Actions (Complete / Hide)
+                                const leftActions: SwipeAction[] = [];
+                                leftActions.push({
+                                    key: 'complete',
+                                    icon: <CheckCircle size={20} />,
+                                    label: 'Tamamla',
+                                    color: 'bg-green-500',
+                                    onClick: () => handleDebtComplete(debt)
+                                });
+                                leftActions.push({
+                                    key: 'hide',
+                                    icon: <EyeOff size={20} />,
+                                    label: 'Gizle',
+                                    color: 'bg-zinc-500',
+                                    onClick: () => handleDebtHide(debt.id)
+                                });
+
                                 return (
                                     <AdaptiveActionRow
                                         key={debt.id}
+                                        leftActions={leftActions}
                                         rightActions={rightActions}
-                                        isOpen={openRowId === `${debt.id}_right` ? 'right' : null}
+                                        isOpen={openRowId === `${debt.id}_right` ? 'right' : (openRowId === `${debt.id}_left` ? 'left' : null)}
                                         onOpen={(dir) => setOpenRowId(`${debt.id}_${dir}`)}
                                         onClose={() => setOpenRowId(null)}
-                                        contentClassName="rounded-2xl" // Ensure rounded corners on content
-                                        className="rounded-2xl" // Ensure rounded corners on container
+                                        contentClassName="rounded-2xl"
+                                        className="rounded-2xl mb-3 shadow-sm" // Moved mb-3 here to fix overflow bleeding
                                     >
                                         <DebtCard
                                             debt={debt}
@@ -472,6 +468,7 @@ export const PersonStream = () => {
                                             onClick={() => navigate(`/debt/${debt.id}`)}
                                             disabled={isBlocked}
                                             variant="default"
+                                            className="!mb-0 !shadow-none" // Remove margin and shadow from card to let wrapper handle it
                                         />
                                     </AdaptiveActionRow>
                                 );

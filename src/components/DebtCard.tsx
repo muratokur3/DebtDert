@@ -21,6 +21,7 @@ interface DebtCardProps {
     variant?: 'default' | 'chat';
     isNew?: boolean;
     className?: string; // NEW: Accept className override
+    hideMenu?: boolean;
 }
 
 export const DebtCard: React.FC<DebtCardProps> = ({
@@ -31,7 +32,8 @@ export const DebtCard: React.FC<DebtCardProps> = ({
     disabled = false,
     variant = 'default',
     isNew = false,
-    className
+    className,
+    hideMenu = false
 }) => {
     const { resolveName } = useContactName();
     const { showConfirm, showAlert } = useModal();
@@ -196,43 +198,45 @@ export const DebtCard: React.FC<DebtCardProps> = ({
                     </div>
 
                     {/* Three Dot Menu */}
-                    <div className="relative" onClick={e => e.stopPropagation()}>
-                        <button
-                            onClick={() => setShowMenu(!showMenu)}
-                            className="p-1 -mr-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800"
-                        >
-                            <MoreVertical size={20} />
-                        </button>
-                        {showMenu && (
-                            <>
-                                <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
-                                <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-gray-200 dark:border-slate-700 z-20 overflow-hidden">
-                                    {isEditable && (
-                                        <>
-                                            <button
-                                                onClick={handleEdit}
-                                                className="w-full text-left px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 flex items-center gap-2 border-b border-gray-100 dark:border-slate-700"
-                                            >
-                                                <Edit2 size={16} /> Düzenle
-                                            </button>
-                                            <button
-                                                onClick={handleDelete}
-                                                className="w-full text-left px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2"
-                                            >
-                                                <Trash2 size={16} /> Sil
-                                            </button>
-                                        </>
-                                    )}
+                    {!hideMenu && (
+                        <div className="relative" onClick={e => e.stopPropagation()}>
+                            <button
+                                onClick={() => setShowMenu(!showMenu)}
+                                className="p-1 -mr-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800"
+                            >
+                                <MoreVertical size={20} />
+                            </button>
+                            {showMenu && (
+                                <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)}></div>
+                                    <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-gray-200 dark:border-slate-700 z-20 overflow-hidden">
+                                        {isEditable && (
+                                            <>
+                                                <button
+                                                    onClick={handleEdit}
+                                                    className="w-full text-left px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 flex items-center gap-2 border-b border-gray-100 dark:border-slate-700"
+                                                >
+                                                    <Edit2 size={16} /> Düzenle
+                                                </button>
+                                                <button
+                                                    onClick={handleDelete}
+                                                    className="w-full text-left px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 flex items-center gap-2"
+                                                >
+                                                    <Trash2 size={16} /> Sil
+                                                </button>
+                                            </>
+                                        )}
 
-                                    {!isEditable && (
-                                        <div className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500 italic text-center">
-                                            İşlem yapılamaz (Süre doldu)
-                                        </div>
-                                    )}
-                                </div>
-                            </>
-                        )}
-                    </div>
+                                        {!isEditable && (
+                                            <div className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500 italic text-center">
+                                                İşlem yapılamaz (Süre doldu)
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 

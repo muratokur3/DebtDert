@@ -431,7 +431,7 @@ export const PersonStream = () => {
                     <div className="flex justify-between items-center mb-3 px-1">
                         <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Akış Özeti</h2>
 
-                        <button 
+                        <button
                             onClick={() => navigate(`/person/${id}/history`)}
                             className="bg-blue-600 text-white px-4 py-2 rounded-xl shadow-lg shadow-blue-500/20 text-sm font-semibold flex items-center gap-2 hover:bg-blue-700 active:scale-95 transition-all"
                         >
@@ -440,45 +440,53 @@ export const PersonStream = () => {
                         </button>
                     </div>
 
-                    <div className="flex items-start gap-2">
+                    <div className="flex items-center gap-2">
                         {/* Vertical Filter Stack (3 Dots Style) */}
-                        <div className="flex flex-col gap-2 pt-1">
-                            <button
-                                onClick={() => setViewMode('FLOW')}
-                                title="Akış"
-                                className={clsx(
-                                    "w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm border",
-                                    viewMode === 'FLOW'
-                                        ? "bg-blue-100 border-blue-200 text-blue-600 dark:bg-blue-900/40 dark:border-blue-800 dark:text-blue-300 scale-110"
-                                        : "bg-surface border-border text-text-tertiary hover:text-text-secondary hover:bg-slate-50 dark:hover:bg-slate-800"
-                                )}
-                            >
-                                <Activity size={16} />
-                            </button>
-                            <button
-                                onClick={() => setViewMode('SPECIAL')}
-                                title="Özel"
-                                className={clsx(
-                                    "w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm border",
-                                    viewMode === 'SPECIAL'
-                                        ? "bg-purple-100 border-purple-200 text-purple-600 dark:bg-purple-900/40 dark:border-purple-800 dark:text-purple-300 scale-110"
-                                        : "bg-surface border-border text-text-tertiary hover:text-text-secondary hover:bg-slate-50 dark:hover:bg-slate-800"
-                                )}
-                            >
-                                <FolderOpen size={16} />
-                            </button>
-                            <button
-                                onClick={() => setViewMode('TOTAL')}
-                                title="Tümü"
-                                className={clsx(
-                                    "w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm border",
-                                    viewMode === 'TOTAL'
-                                        ? "bg-gray-100 border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300 scale-110"
-                                        : "bg-surface border-border text-text-tertiary hover:text-text-secondary hover:bg-slate-50 dark:hover:bg-slate-800"
-                                )}
-                            >
-                                <Layers size={16} />
-                            </button>
+                        <div className="flex flex-col gap-3">
+                            <div className="flex flex-col items-center gap-1">
+                                <button
+                                    onClick={() => setViewMode('FLOW')}
+                                    className={clsx(
+                                        "w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-sm border",
+                                        viewMode === 'FLOW'
+                                            ? "bg-blue-100 border-blue-200 text-blue-600 dark:bg-blue-900/40 dark:border-blue-800 dark:text-blue-300 scale-110 ring-2 ring-blue-100 dark:ring-blue-900/20"
+                                            : "bg-surface border-border text-text-tertiary hover:text-text-secondary hover:bg-slate-50 dark:hover:bg-slate-800"
+                                    )}
+                                >
+                                    <Activity size={16} />
+                                </button>
+                                <span className={clsx("text-[10px] font-medium transition-colors", viewMode === 'FLOW' ? "text-blue-600 dark:text-blue-300" : "text-text-tertiary")}>Akış</span>
+                            </div>
+
+                            <div className="flex flex-col items-center gap-1">
+                                <button
+                                    onClick={() => setViewMode('SPECIAL')}
+                                    className={clsx(
+                                        "w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-sm border",
+                                        viewMode === 'SPECIAL'
+                                            ? "bg-purple-100 border-purple-200 text-purple-600 dark:bg-purple-900/40 dark:border-purple-800 dark:text-purple-300 scale-110 ring-2 ring-purple-100 dark:ring-purple-900/20"
+                                            : "bg-surface border-border text-text-tertiary hover:text-text-secondary hover:bg-slate-50 dark:hover:bg-slate-800"
+                                    )}
+                                >
+                                    <FolderOpen size={16} />
+                                </button>
+                                <span className={clsx("text-[10px] font-medium transition-colors", viewMode === 'SPECIAL' ? "text-purple-600 dark:text-purple-300" : "text-text-tertiary")}>Özel</span>
+                            </div>
+
+                            <div className="flex flex-col items-center gap-1">
+                                <button
+                                    onClick={() => setViewMode('TOTAL')}
+                                    className={clsx(
+                                        "w-9 h-9 rounded-full flex items-center justify-center transition-all shadow-sm border",
+                                        viewMode === 'TOTAL'
+                                            ? "bg-gray-100 border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300 scale-110 ring-2 ring-gray-100 dark:ring-gray-800"
+                                            : "bg-surface border-border text-text-tertiary hover:text-text-secondary hover:bg-slate-50 dark:hover:bg-slate-800"
+                                    )}
+                                >
+                                    <Layers size={16} />
+                                </button>
+                                <span className={clsx("text-[10px] font-medium transition-colors", viewMode === 'TOTAL' ? "text-gray-600 dark:text-gray-300" : "text-text-tertiary")}>Tümü</span>
+                            </div>
                         </div>
 
                         {/* Card Content */}

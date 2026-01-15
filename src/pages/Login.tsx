@@ -1,98 +1,97 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Loader2, MessageSquare, Lock, ArrowLeft } from 'lucide-react';
 import { auth } from '../services/firebase';
 import { RecaptchaVerifier } from 'firebase/auth';
-import { startPhoneLogin, ensureUserDocument } from '../services/auth';
+import type { ConfirmationResult } from 'firebase/auth';
+import { startPhoneLogin, ensureUserDocument, loginWithPhoneAndPassword } from '../services/auth';
 import { useModal } from '../context/ModalContext';
+import clsx from 'clsx';
+import { PhoneInput } from '../components/PhoneInput';
 
 export const Login = () => {
     const navigate = useNavigate();
-    // const [activeTab, setActiveTab] = useState<'PASSWORD' | 'SMS'>('SMS'); // DISABLED FOR TEST
+    const [activeTab, setActiveTab] = useState<'PASSWORD' | 'SMS'>('SMS');
     const [loading, setLoading] = useState(false);
     const { showAlert } = useModal();
 
     // Form Data
-    // const [phone, setPhone] = useState(''); // DISABLED FOR TEST
-    // const [password, setPassword] = useState(''); // DISABLED FOR TEST
-    // const [otp, setOtp] = useState(''); // DISABLED FOR TEST
+    const [phone, setPhone] = useState('');
+    const [password, setPassword] = useState('');
+    const [otp, setOtp] = useState('');
 
     // SMS State
-    // const [smsStep, setSmsStep] = useState<'REQUEST' | 'VERIFY'>('REQUEST'); // DISABLED FOR TEST
-    // const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null); // DISABLED FOR TEST
+    const [smsStep, setSmsStep] = useState<'REQUEST' | 'VERIFY'>('REQUEST');
+    const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
     const recaptchaVerifier = useRef<RecaptchaVerifier | null>(null);
     const attemptRef = useRef(false);
 
     useEffect(() => {
-        // Initialize Recaptcha for SMS login (Still needed for the test flow)
+        // Initialize Recaptcha for SMS login
         if (!recaptchaVerifier.current) {
             recaptchaVerifier.current = new RecaptchaVerifier(auth, 'login-recaptcha', {
                 size: 'invisible',
             });
         }
-
-        // TEST MODE AUTO LOGIN
-        // 542 640 32 16 - 123456
-        const autoLogin = async () => {
-            if (attemptRef.current) return;
-            attemptRef.current = true;
-
-            console.warn("TEST MODE: AUTO LOGGING IN...");
-            setLoading(true);
-
-            try {
-                const TEST_PHONE = "542 640 32 16";
-                const TEST_CODE = "123456";
-
-                if (!recaptchaVerifier.current) return;
-
-                // Start Login
-                const confirmation = await startPhoneLogin(TEST_PHONE, recaptchaVerifier.current);
-
-                // Auto Confirm
-                const result = await confirmation.confirm(TEST_CODE);
-
-                if (result.user) {
-                    await ensureUserDocument(result.user);
-                    console.warn("TEST MODE: LOGIN SUCCESS");
-                    navigate('/');
-                }
-            } catch (error: any) {
-                console.error("TEST MODE LOGIN FAILED:", error);
-                showAlert("Test Girişi Başarısız", error.message || "Bilinmeyen hata", "error");
-                setLoading(false);
-            }
-        };
-
-        // Delay slightly to ensure recaptcha init
-        const timer = setTimeout(() => {
-            autoLogin();
-        }, 1000);
-
+        // No auto login in production mode
         return () => {
-            clearTimeout(timer);
             if (recaptchaVerifier.current) {
                 recaptchaVerifier.current.clear();
                 recaptchaVerifier.current = null;
             }
         };
-    }, [navigate, showAlert]);
+    }, []);
 
+
+
+    // Handlers for login flows
+    const handlePasswordLogin = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            // Use password login (pseudo-email) flow
+            await loginWithPhoneAndPassword(phone, password);
+            navigate('/');
+        } catch (error: any) {
+            showAlert('Giriş Başarısız', error.message || 'Bilinmeyen hata', 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSendSms = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            const result = await startPhoneLogin(phone, recaptchaVerifier.current!);
+            setConfirmationResult(result);
+            setSmsStep('VERIFY');
+        } catch (error: any) {
+            showAlert('SMS Gönderilemedi', error.message || 'Bilinmeyen hata', 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleVerifySms = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!confirmationResult) return;
+        setLoading(true);
+        try {
+            const result = await confirmationResult.confirm(otp);
+            await ensureUserDocument(result.user);
+            navigate('/');
+        } catch (error: any) {
+            showAlert('Doğrula ve Giriş Başarısız', error.message || 'Bilinmeyen hata', 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
             <div className="w-full max-w-md bg-surface p-8 rounded-3xl shadow-xl border border-slate-700 text-center">
-                <h1 className="text-2xl font-bold text-red-500 mb-4">TEST MODU AKTİF</h1>
-                <p className="text-text-primary mb-6">
-                    Giriş ekranı test süreçleri için devre dışı bırakıldı.
-                    <br />
-                    Otomatik giriş yapılıyor...
-                </p>
-                <p className="text-text-secondary font-mono text-sm mb-6">
-                    User: 542 640 32 16
-                    <br/>
-                    Pass: 123456 (SMS)
-                </p>
+                
 
                 <div className="flex justify-center">
                     {loading && <Loader2 className="animate-spin text-primary" size={32} />}
@@ -100,9 +99,7 @@ export const Login = () => {
 
                 <div id="login-recaptcha"></div>
 
-                {/*
-                NORMAL GİRİŞ EKRANI TEST İÇİN KAPATILDI
-
+                
                 <div className="relative mb-6 text-center">
                     <Link to="/" className="absolute left-0 top-1 text-text-secondary hover:text-text-primary transition-colors">
                         <ArrowLeft size={24} />
@@ -208,7 +205,7 @@ export const Login = () => {
                                 <input
                                     type="text"
                                     value={otp}
-                                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                    onChange={(e) => setOtp(e.target.value.replace(/\\D/g, '').slice(0, 6))}
                                     className="w-full text-center text-3xl tracking-[0.5em] font-bold py-4 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary outline-none transition-all"
                                     placeholder="000000"
                                     required
@@ -240,7 +237,6 @@ export const Login = () => {
                         </Link>
                     </p>
                 </div>
-                */}
             </div>
         </div>
     );

@@ -17,7 +17,7 @@ import { CreateDebtModal } from '../components/CreateDebtModal';
 import { SummaryCard } from '../components/SummaryCard';
 import { PhoneInput } from '../components/PhoneInput';
 import { fetchRates, convertToTRY, type CurrencyRates } from '../services/currency';
-import { calculateStreamBalance, type DetailedBalances } from '../utils/balanceAggregator';
+import { calculateStreamBalance, calculateDebtsBalance, mergeBalances, type DetailedBalances } from '../utils/balanceAggregator';
 import { cleanPhone as cleanPhoneNumber, formatPhoneForDisplay as formatPhoneNumber } from '../utils/phoneUtils';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -26,6 +26,10 @@ import type { User, Contact, Debt } from '../types';
 import { useLedger } from '../hooks/useLedger';
 import { AdaptiveActionRow } from '../components/AdaptiveActionRow';
 import { type SwipeAction } from '../components/SwipeableItem';
+import clsx from 'clsx';
+
+// View Mode Type
+type ViewMode = 'FLOW' | 'SPECIAL' | 'TOTAL';
 
 export const PersonStream = () => {
     const { id } = useParams<{ id: string }>();
@@ -37,6 +41,16 @@ export const PersonStream = () => {
     const { showAlert, showConfirm } = useModal();
     
     // State
+    const [viewMode, setViewMode] = useState<ViewMode>(() => {
+        return (localStorage.getItem(`streamViewMode_${id}`) as ViewMode) || 'FLOW';
+    });
+
+    useEffect(() => {
+        if (id) {
+            localStorage.setItem(`streamViewMode_${id}`, viewMode);
+        }
+    }, [viewMode, id]);
+
     const [targetUserObject, setTargetUserObject] = useState<User | Contact | null>(null);
     const [contactId, setContactId] = useState<string | null>(null);
     const [isBlocked, setIsBlocked] = useState(false);
@@ -181,7 +195,7 @@ export const PersonStream = () => {
         personInfo.name
     );
 
-    // Calculate Stream Balance
+    // Calculate Stream Balance (Flow)
     const streamBalance = useMemo(() => {
         if (!user) return new Map() as DetailedBalances;
         return calculateStreamBalance(transactions, user.uid);
@@ -217,6 +231,30 @@ export const PersonStream = () => {
             return timeB - timeA;
         });
     }, [debts, id, user, resolvedUid]);
+
+    // Calculate Special Debts Balance
+    const debtsBalance = useMemo(() => {
+        if (!user) return new Map() as DetailedBalances;
+        return calculateDebtsBalance(personDebts, user.uid);
+    }, [personDebts, user]);
+
+    // Calculate Total Balance
+    const totalBalance = useMemo(() => {
+        return mergeBalances(streamBalance, debtsBalance);
+    }, [streamBalance, debtsBalance]);
+
+    // Determine Display Balance based on View Mode
+    const displayBalance = useMemo(() => {
+        switch (viewMode) {
+            case 'SPECIAL':
+                return debtsBalance;
+            case 'TOTAL':
+                return totalBalance;
+            case 'FLOW':
+            default:
+                return streamBalance;
+        }
+    }, [viewMode, streamBalance, debtsBalance, totalBalance]);
 
     // Actions
     const handleBlockToggle = async () => {
@@ -389,74 +427,126 @@ export const PersonStream = () => {
 
             <main className="p-4 space-y-6">
                 {/* A. Akış Özeti (Stream Summary) */}
-                <section className="relative group">
+                <section className="relative group/stream">
                     <div className="flex justify-between items-center mb-3 px-1">
-                        <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Akış Özeti</h2>
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wider">Akış Özeti</h2>
+                            
+                            {/* Tri-State Toggle */}
+                            <div className="bg-surface border border-border p-1 rounded-lg flex shadow-sm">
+                                <button
+                                    onClick={() => setViewMode('FLOW')}
+                                    className={clsx(
+                                        "px-3 py-1 text-[11px] font-bold rounded-md transition-all",
+                                        viewMode === 'FLOW' 
+                                            ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 shadow-sm" 
+                                            : "text-text-secondary hover:text-text-primary"
+                                    )}
+                                >
+                                    Akış
+                                </button>
+                                <div className="w-px bg-border my-1 mx-0.5"></div>
+                                <button
+                                    onClick={() => setViewMode('SPECIAL')}
+                                    className={clsx(
+                                        "px-3 py-1 text-[11px] font-bold rounded-md transition-all",
+                                        viewMode === 'SPECIAL' 
+                                            ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 shadow-sm" 
+                                            : "text-text-secondary hover:text-text-primary"
+                                    )}
+                                >
+                                    Özel
+                                </button>
+                                <div className="w-px bg-border my-1 mx-0.5"></div>
+                                <button
+                                    onClick={() => setViewMode('TOTAL')}
+                                    className={clsx(
+                                        "px-3 py-1 text-[11px] font-bold rounded-md transition-all",
+                                        viewMode === 'TOTAL' 
+                                            ? "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 shadow-sm" 
+                                            : "text-text-secondary hover:text-text-primary"
+                                    )}
+                                >
+                                    Tümü
+                                </button>
+                            </div>
+                        </div>
+
                         <button 
                             onClick={() => navigate(`/person/${id}/history`)}
-                            className="text-xs text-primary font-medium flex items-center gap-1 hover:underline"
+                            className="bg-blue-600 text-white px-4 py-2 rounded-xl shadow-lg shadow-blue-500/20 text-sm font-semibold flex items-center gap-2 hover:bg-blue-700 active:scale-95 transition-all"
                         >
                             Tüm Geçmiş
-                            <ArrowLeft className="rotate-180" size={14} />
+                            <ArrowLeft className="rotate-180" size={16} />
                         </button>
                     </div>
 
-                    {transactions.length > 0 ? (
-                        <div className="flex gap-3 overflow-x-auto pb-4 min-h-[140px] snap-x snap-mandatory scrollbar-hide pt-1">
-                            {/* Grand Total in TRY for this Person */}
-                            {(() => {
-                                const entries = Array.from(streamBalance.entries());
-                                const totalNet = entries.reduce((sum, [curr, b]) => sum + (rates ? convertToTRY(b.net, curr, rates) : 0), 0);
-                                const totalRec = entries.reduce((sum, [curr, b]) => sum + (rates ? convertToTRY(b.receivables, curr, rates) : 0), 0);
-                                const totalPay = entries.reduce((sum, [curr, b]) => sum + (rates ? convertToTRY(b.payables, curr, rates) : 0), 0);
-                                
-                                return (
-                                    <SummaryCard
-                                        title="Toplam Varlık"
-                                        currency="TRY"
-                                        net={totalNet}
-                                        receivables={totalRec}
-                                        payables={totalPay}
-                                        variant="auto"
-                                        className="!w-[220px]"
-                                    />
-                                );
-                            })()}
+                    <div className={clsx(
+                        "transition-all duration-300 rounded-2xl p-0.5",
+                        viewMode !== 'FLOW' && "bg-gradient-to-br from-transparent to-transparent", // Placeholder for potential bg highlight
+                        viewMode === 'SPECIAL' && "bg-purple-50/50 dark:bg-purple-900/5",
+                        viewMode === 'TOTAL' && "bg-gray-50/50 dark:bg-gray-800/20"
+                    )}>
+                        {(displayBalance && displayBalance.size > 0) ? (
+                            <div className="flex gap-3 overflow-x-auto pb-4 min-h-[140px] snap-x snap-mandatory scrollbar-hide pt-1 px-1">
+                                {/* Grand Total in TRY for this Person */}
+                                {(() => {
+                                    if (viewMode === 'FLOW' || viewMode === 'TOTAL') {
+                                        const entries = Array.from(displayBalance.entries());
+                                        const totalNet = entries.reduce((sum, [curr, b]) => sum + (rates ? convertToTRY(b.net, curr, rates) : 0), 0);
+                                        const totalRec = entries.reduce((sum, [curr, b]) => sum + (rates ? convertToTRY(b.receivables, curr, rates) : 0), 0);
+                                        const totalPay = entries.reduce((sum, [curr, b]) => sum + (rates ? convertToTRY(b.payables, curr, rates) : 0), 0);
+                                        
+                                        return (
+                                            <SummaryCard
+                                                title={viewMode === 'TOTAL' ? "Net Varlık Durumu" : "Toplam Akış Varlığı"}
+                                                currency="TRY"
+                                                net={totalNet}
+                                                receivables={totalRec}
+                                                payables={totalPay}
+                                                variant="auto"
+                                                className="!w-[220px]"
+                                            />
+                                        );
+                                    }
+                                    return null;
+                                })()}
 
-                            {/* Individual Currencies */}
-                            {Array.from(streamBalance.entries())
-                                .sort((a, b) => (a[0] === 'TRY' ? -1 : b[0] === 'TRY' ? 1 : 0))
-                                .map(([currency, balance]) => {
-                                    const isToggled = toggledCards[currency];
+                                {/* Individual Currencies */}
+                                {Array.from(displayBalance.entries())
+                                    .sort((a, b) => (a[0] === 'TRY' ? -1 : b[0] === 'TRY' ? 1 : 0))
+                                    .map(([currency, balance]) => {
+                                        const isToggled = toggledCards[currency];
 
-                                    const net = (isToggled && rates) ? convertToTRY(balance.net, currency, rates) : balance.net;
-                                    const receivables = (isToggled && rates) ? convertToTRY(balance.receivables, currency, rates) : balance.receivables;
-                                    const payables = (isToggled && rates) ? convertToTRY(balance.payables, currency, rates) : balance.payables;
+                                        const net = (isToggled && rates) ? convertToTRY(balance.net, currency, rates) : balance.net;
+                                        const receivables = (isToggled && rates) ? convertToTRY(balance.receivables, currency, rates) : balance.receivables;
+                                        const payables = (isToggled && rates) ? convertToTRY(balance.payables, currency, rates) : balance.payables;
 
-                                    return (
-                                        <SummaryCard
-                                            key={currency}
-                                            title={`Varlık (${currency})`}
-                                            currency={currency}
-                                            net={net}
-                                            receivables={receivables}
-                                            payables={payables}
-                                            isToggled={isToggled}
-                                            onToggle={() => toggleCardCurrency(currency)}
-                                            showToggle={currency !== 'TRY'}
-                                            variant={balance.net >= 0 ? 'emerald' : 'rose'}
-                                            className="!w-[220px]"
-                                        />
-                                    );
-                                })}
-                        </div>
-                    ) : (
-                        <div className="bg-surface rounded-2xl p-8 text-center border border-dashed border-border shadow-sm">
-                            <span className="text-3xl mb-2 block">💬</span>
-                            <p className="text-text-secondary font-medium">Henüz akış kaydı yok</p>
-                            <p className="text-xs text-text-tertiary mt-1">Yapılan borç/alacak işlemleri burada özetlenir</p>
-                        </div>
-                    )}
+                                        return (
+                                            <SummaryCard
+                                                key={currency}
+                                                title={viewMode === 'TOTAL' ? `Toplam (${currency})` : (viewMode === 'SPECIAL' ? `Özel Borç (${currency})` : `Varlık (${currency})`)}
+                                                currency={currency}
+                                                net={net}
+                                                receivables={receivables}
+                                                payables={payables}
+                                                isToggled={isToggled}
+                                                onToggle={() => toggleCardCurrency(currency)}
+                                                showToggle={currency !== 'TRY'}
+                                                variant={balance.net >= 0 ? 'emerald' : 'rose'}
+                                                className="!w-[220px]"
+                                            />
+                                        );
+                                    })}
+                            </div>
+                        ) : (
+                            <div className="bg-surface rounded-2xl p-8 text-center border border-dashed border-border shadow-sm">
+                                <span className="text-3xl mb-2 block">💬</span>
+                                <p className="text-text-secondary font-medium">Bu görünümde veri yok</p>
+                                <p className="text-xs text-text-tertiary mt-1">Seçili filtreye uygun kayıt bulunamadı</p>
+                            </div>
+                        )}
+                    </div>
                 </section>
 
                 {/* B. Özel Borçlar Listesi (Special Debts List) */}

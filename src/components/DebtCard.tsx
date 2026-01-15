@@ -144,7 +144,7 @@ export const DebtCard: React.FC<DebtCardProps> = ({
             <div
                 onClick={onClick}
                 className={clsx(
-                    "p-4 border-2 active:scale-[0.98] transition-all cursor-pointer relative shadow-sm hover:shadow-md bg-white dark:bg-slate-900 mb-3",
+                    "p-4 border-2 active:scale-[0.98] transition-all cursor-pointer relative shadow-sm hover:shadow-md bg-white dark:bg-slate-900 mb-3 group",
                     isChat ? "rounded-xl border-dashed" : "rounded-2xl",
                     isNew && !isChat && "ring-2 ring-green-500/20",
                     isLender ? "border-purple-200 dark:border-purple-800" : "border-orange-200 dark:border-orange-800",
@@ -170,7 +170,7 @@ export const DebtCard: React.FC<DebtCardProps> = ({
                                     isChat ? "text-base" : "text-lg",
                                     (disabled || isRejectedByReceiver) && "line-through text-gray-500"
                                 )}>
-                                    {debt.note || "İsimsiz Dosya"}
+                                    {debt.note || `${formatCurrency(debt.originalAmount || debt.remainingAmount, debt.currency)} Borç Kaydı`}
                                 </h3>
                                 {isChat && (
                                     <div className="flex items-center gap-2 mt-1">
@@ -192,18 +192,43 @@ export const DebtCard: React.FC<DebtCardProps> = ({
                             </div>
 
                             <div className="flex flex-col items-end shrink-0">
+                                <div className="text-[10px] text-text-secondary uppercase tracking-wider font-semibold mb-0.5">
+                                    Kalan
+                                </div>
                                 <div className={clsx(
-                                    "font-bold tracking-tight text-lg",
+                                    "font-bold tracking-tight text-lg leading-none mb-1",
                                     isPaid || isRejectedByReceiver ? "text-gray-400 line-through" : (isLender ? "text-purple-700 dark:text-purple-400" : "text-orange-700 dark:text-orange-400"),
                                     disabled && "opacity-50"
                                 )}>
                                     {formatCurrency(debt.remainingAmount, debt.currency)}
                                 </div>
-                                <div className="text-[10px] text-text-secondary opacity-70">
+                                
+                                {debt.originalAmount && debt.originalAmount !== debt.remainingAmount && (
+                                    <div className="text-[10px] text-text-tertiary">
+                                        Toplam: {formatCurrency(debt.originalAmount, debt.currency)}
+                                    </div>
+                                )}
+
+                                <div className="text-[10px] text-text-secondary opacity-70 mt-1">
                                     {debt.createdAt?.toDate ? format(debt.createdAt.toDate(), 'd MMM', { locale: tr }) : ''}
                                 </div>
                             </div>
                         </div>
+                        
+                        {/* Progress Bar */}
+                        {debt.originalAmount && debt.originalAmount > 0 && (
+                             <div className="w-full h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden mt-3">
+                                 <div 
+                                     className={clsx(
+                                         "h-full rounded-full transition-all duration-500",
+                                         isLender ? "bg-purple-500" : "bg-orange-500"
+                                     )}
+                                     style={{ 
+                                         width: `${Math.min(100, Math.max(0, ((debt.originalAmount - debt.remainingAmount) / debt.originalAmount) * 100))}%` 
+                                     }}
+                                 />
+                             </div>
+                        )}
                     </div>
 
                     {/* Three Dot Menu (Desktop Only) */}
@@ -216,7 +241,10 @@ export const DebtCard: React.FC<DebtCardProps> = ({
                                     setOpenUpwards(spaceBelow < 200);
                                     setShowMenu(!showMenu);
                                 }}
-                                className="p-1 -mr-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800"
+                                className={clsx(
+                                    "p-1 -mr-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-opacity",
+                                    showMenu ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                                )}
                             >
                                 <MoreVertical size={20} />
                             </button>

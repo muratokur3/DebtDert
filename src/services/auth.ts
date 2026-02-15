@@ -44,8 +44,12 @@ export const startPhoneLogin = async (phoneNumber: string, appVerifier: Recaptch
  */
 export const linkPasswordToPhone = async (user: User, password: string, displayName: string, recoveryEmail?: string) => {
     try {
-        const cleanPhone = user.phoneNumber || ''; // Should be present for phone users
-        if (!cleanPhone) throw new Error("User has no phone number");
+        const rawPhone = user.phoneNumber || '';
+        if (!rawPhone) throw new Error("User has no phone number");
+        
+        // CRITICAL FIX: Actually clean the phone number with cleanPhoneNumber()
+        // This was the bug - variable was named cleanPhone but function was never called!
+        const cleanPhone = cleanPhoneNumber(rawPhone);
 
         const pseudoEmail = formatPseudoEmail(cleanPhone);
 
@@ -137,13 +141,15 @@ export const loginWithPhoneAndPassword = async (phoneNumber: string, password: s
         const pseudoEmail = formatPseudoEmail(phoneNumber);
         const userCredential = await signInWithEmailAndPassword(auth, pseudoEmail, password);
 
-        // Ensure fresh claims
+        // Ensure fresh claims - CRITICAL: clean phone to E.164 format!
         if (userCredential.user.phoneNumber) {
-            await claimLegacyDebts(userCredential.user.uid, userCredential.user.phoneNumber);
+            const cleanedPhone = cleanPhoneNumber(userCredential.user.phoneNumber);
+            await claimLegacyDebts(userCredential.user.uid, cleanedPhone);
         } else {
             // If phone number is somehow missing from auth object (rare for this flow), try to get from email
             const extractedPhone = pseudoEmail.replace(EMAIL_DOMAIN, '');
-            await claimLegacyDebts(userCredential.user.uid, extractedPhone);
+            const cleanedPhone = cleanPhoneNumber(extractedPhone);
+            await claimLegacyDebts(userCredential.user.uid, cleanedPhone);
         }
 
         return userCredential.user;

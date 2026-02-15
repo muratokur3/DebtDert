@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { getContacts, deleteContact, updateContact, createDebt, batchAddContacts } from '../services/db';
-import type { Contact } from '../types';
+import { deleteContact, updateContact, createDebt, batchAddContacts, searchUserByPhone } from '../services/db';
+import type { Contact, Installment } from '../types';
 import { Search, ArrowLeft, Wallet, X, Ban, Edit2, Trash2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useContacts } from '../hooks/useContacts';
 import { AdaptiveActionRow } from '../components/AdaptiveActionRow';
 import { type SwipeAction } from '../components/SwipeableItem';
 import { Avatar } from '../components/Avatar';
@@ -22,9 +23,11 @@ export const Contacts = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { showAlert, showConfirm } = useModal();
-    const [contacts, setContacts] = useState<Contact[]>([]);
+    
+    // Use Context instead of local state
+    const { contacts, loading } = useContacts(); // refreshContacts might be no-op now but compatible
 
-    const [loading, setLoading] = useState(true);
+    // Local state for UI only
     const [searchTerm, setSearchTerm] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editingContact, setEditingContact] = useState<Contact | null>(null);
@@ -69,10 +72,11 @@ export const Contacts = () => {
 
     const handleConflictResolution = async (resolutions: { [key: string]: 'update' | 'skip' }) => {
         if (!user) return;
-
-        // We do NOT set Submitting globally because we want the UI to remain interactive for partial updates
+        
+        // ... (rest of logic same until refresh)
+        
         // setSubmitting(true);
-
+        
         const toUpdate: { id: string, data: Partial<Contact> }[] = [];
         const resolvedPhones: string[] = [];
 
@@ -92,10 +96,9 @@ export const Contacts = () => {
                 await updateContact(user.uid, update.id, update.data);
             }
 
-            // If we updated anything, reload contacts to reflect changes in background
-            if (toUpdate.length > 0) {
-                await loadContacts();
-            }
+            // If we updated anything, we don't need manual reload if subscription works, 
+            // but conflicts resolution might need manual trigger if subscription is slow?
+            // Actually context subscription should auto-update.
 
             // Remove resolved items from conflict list
             setConflicts(prev => {
@@ -103,11 +106,6 @@ export const Contacts = () => {
 
                 // If no conflicts remain, check for pending imports
                 if (remaining.length === 0 && importedContacts.length > 0) {
-                    // All conflicts resolved, proceed to import verification if needed
-                    // Or since the user might have "skipped" everything, we should just check if we need to show the import preview
-                    // For now, let's just show import preview if there are still NEW contacts waiting
-
-                    // We need to delay this slightly or just set the state layout
                     setTimeout(() => {
                         if (importedContacts.length > 0) {
                             setShowConflictResolution(false);
@@ -140,7 +138,7 @@ export const Contacts = () => {
 
             if (validContacts.length > 0) {
                 await batchAddContacts(user.uid, validContacts);
-                await loadContacts();
+                // await loadContacts(); // Context handles this automatically
                 showAlert("İçe Aktarma Başarılı", `${validContacts.length} yeni kişi rehberinize eklendi.`, "success");
             }
         } catch (error) {
@@ -161,13 +159,7 @@ export const Contacts = () => {
         setConflicts([]);
     }
 
-
-
-    useEffect(() => {
-        if (user) {
-            loadContacts();
-        }
-    }, [user]);
+    // REMOVED loadContacts and useEffect calling it
 
     useEffect(() => {
         const state = location.state as { initialPhone?: string } | null;
@@ -178,21 +170,6 @@ export const Contacts = () => {
         }
     }, [location]);
 
-    const loadContacts = async () => {
-        if (!user) return;
-        setLoading(true);
-        try {
-            const data = await getContacts(user.uid);
-            setContacts(data);
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-
-
     const handleDeleteContact = async (contactId: string) => {
         if (!user) return;
         const confirmed = await showConfirm("Kişi Sil", "Bu kişiyi silmek istediğinize emin misiniz?");
@@ -200,7 +177,7 @@ export const Contacts = () => {
 
         try {
             await deleteContact(user.uid, contactId);
-            await loadContacts();
+            // await loadContacts(); // Context handles this
             showAlert("Silindi", "Kişi başarıyla silindi.", "success");
         } catch (error) {
             console.error(error);
@@ -216,7 +193,7 @@ export const Contacts = () => {
         currency: string,
         note?: string,
         dueDate?: Date,
-        installments?: any[],
+        installments?: Installment[],
         canBorrowerAddPayment?: boolean,
         initialPayment?: number
     ) => {
@@ -248,7 +225,7 @@ export const Contacts = () => {
         setEditingContact(null);
     };
 
-    const filteredContacts = contacts.filter(c =>
+    const filteredContacts = contacts.filter((c: Contact) =>
         c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.phoneNumber.includes(searchTerm)
     );
@@ -382,8 +359,30 @@ export const Contacts = () => {
                                                 className="mb-0 overflow-hidden"
                                             >
                                                 <div
-                                                    onClick={() => {
-                                                        const targetId = contact.linkedUserId || contact.phoneNumber;
+                                                    onClick={async () => {
+                                                        let targetId = contact.linkedUserId;
+                                                        
+                                                        // Fallback: If no linkedUserId, try to resolve it from phoneNumber (Lazy Auto-Fix)
+                                                        // This handles cases where a contact was added BEFORE the user registered.
+                                                        if (!targetId && contact.phoneNumber) {
+                                                            try {
+                                                                const foundUser = await searchUserByPhone(contact.phoneNumber);
+                                                                if (foundUser) {
+                                                                     targetId = foundUser.uid;
+                                                                     // Fire-and-forget update to fix it permanently
+                                                                     if (user) {
+                                                                        updateContact(user.uid, contact.id, { linkedUserId: foundUser.uid }).catch(console.error);
+                                                                     }
+                                                                } else {
+                                                                     targetId = contact.phoneNumber;
+                                                                }
+                                                            } catch {
+                                                                targetId = contact.phoneNumber;
+                                                            }
+                                                        } else if (!targetId) {
+                                                            targetId = contact.phoneNumber;
+                                                        }
+
                                                         navigate(`/person/${targetId}`, { state: { name: contact.name, phone: contact.phoneNumber } });
                                                     }}
                                                     className="p-4 pl-5 flex items-center gap-4 cursor-pointer hover:bg-background/50 transition-colors min-h-[72px]"
@@ -392,7 +391,7 @@ export const Contacts = () => {
                                                         <Avatar
                                                             name={contact.name}
                                                             size="md"
-                                                            status={contact.linkedUserId ? 'system' : 'contact'}
+                                                            status="contact"
                                                             className={blocked ? "grayscale opacity-70" : "shadow-sm"}
                                                             uid={contact.linkedUserId}
                                                         />
@@ -442,7 +441,7 @@ export const Contacts = () => {
                 initialPhone={initialPhone}
                 initialName=""
                 onSuccess={() => {
-                    loadContacts();
+                    // loadContacts(); // Context handles this
                     closeModal();
                 }}
             />

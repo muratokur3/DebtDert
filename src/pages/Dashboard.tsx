@@ -7,7 +7,8 @@ import { ContactRow } from '../components/ContactRow';
 import { NotificationsModal } from '../components/NotificationsModal';
 import { useNotifications } from '../hooks/useNotifications';
 import { useNavigate } from 'react-router-dom';
-import { Wallet, Bell, Sun, Moon, ArrowRight } from 'lucide-react';
+import { Wallet, Bell, Sun, Moon, CalendarClock } from 'lucide-react';
+import { PendingPaymentsModal } from '../components/PendingPaymentsModal';
 
 
 import { useTheme } from '../context/ThemeContext';
@@ -15,11 +16,10 @@ import { fetchRates, convertToTRY, type CurrencyRates } from '../services/curren
 import type { Debt } from '../types';
 import { SummaryCard } from '../components/SummaryCard';
 import { EditDebtModal } from '../components/EditDebtModal';
-import { updateDebt, addPayment } from '../services/db';
+import { updateDebt, addPayment, claimLegacyDebts } from '../services/db';
 import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { FeedbackWidget } from '../components/FeedbackWidget';
-import { QuickPayWidget } from '../components/QuickPayWidget';
 import { PaymentModal } from '../components/PaymentModal';
 
 // Types
@@ -48,6 +48,7 @@ export const Dashboard = () => {
     const { resolveName } = useContactName();
     const [editingDebt, setEditingDebt] = useState<Debt | null>(null);
     const [quickPayDebt, setQuickPayDebt] = useState<Debt | null>(null);
+    const [showUpcomingPayments, setShowUpcomingPayments] = useState(false);
 
     // State
     const [rates, setRates] = useState<CurrencyRates | null>(null);
@@ -55,6 +56,27 @@ export const Dashboard = () => {
     useEffect(() => {
         fetchRates().then(setRates);
     }, []);
+
+    // GHOST USER PROTOCOL: Background Claiming & Normalization
+    useEffect(() => {
+        const phone = user?.primaryPhoneNumber || user?.phoneNumber;
+        if (user?.uid && phone) {
+            // 1. Claim Legacy Debts (Multi-format)
+            claimLegacyDebts(user.uid, phone)
+                .then(count => {
+                    if (count > 0) {
+                        console.log(`[GhostUser] ${count} legacy debts claimed. Triggering refresh...`);
+                        window.location.reload();
+                    }
+                })
+                .catch(err => console.error("Ghost User background claim failed:", err));
+
+            // 2. Normalize Address Book (One-time background fix)
+            import('../services/db').then(m => m.normalizeAllUserContacts(user.uid));
+        }
+    }, [user?.uid, user?.primaryPhoneNumber, user?.phoneNumber]);
+
+
 
 
 
@@ -78,6 +100,7 @@ export const Dashboard = () => {
         const contactMap = new Map<string, {
             name: string;
             source: 'contact' | 'user' | 'phone';
+            status: 'contact' | 'system' | 'none'; // Add status
             balance: number; // Net balance in base currency (TRY)
             lastActivity: Date;
             lastSnippet: string;
@@ -143,9 +166,15 @@ export const Dashboard = () => {
                 return; // Skip this debt completely if it doesn't count for me
             }
             // Resolve name if possible
-            let displayName = fallbackName;
-            const resolution = resolveName(otherId, fallbackName);
-            if (resolution.displayName) displayName = resolution.displayName;
+            const resolution = resolveName(otherId, fallbackName, d.lockedPhoneNumber);
+            let displayName = resolution.displayName;
+
+            // ULTIMATE FALLBACK: If resolveName returns a phone number (display name equals formatted identifier)
+            // or if it's "Bilinmeyen" but we have a fallbackName snapshot, use the snapshot.
+            const isPhoneFormat = displayName.replace(/\s/g, '').replace(/\+/g, '').length >= 10 && !isNaN(Number(displayName.replace(/\s/g, '').replace(/\+/g, '')));
+            if ((isPhoneFormat || displayName === 'Bilinmeyen') && fallbackName && fallbackName !== otherId) {
+                displayName = fallbackName;
+            }
 
             // Initialize contact entry if it doesn't exist
             if (!contactMap.has(otherId)) {
@@ -168,12 +197,23 @@ export const Dashboard = () => {
                 contactMap.set(otherId, {
                     name: displayName,
                     source: resolution.source, // Store the source
+                    status: resolution.status, // Store the status
                     balance: 0,
                     lastActivity: activityDate,
                     lastSnippet: snippet,
                     linkedUserId: resolution.linkedUserId,
                     hasUnreadActivity: unread
                 });
+            } else {
+                // If we already have an entry, but current resolution is 'contact' and stored is NOT 'contact',
+                // we should upgrade the name/source because we found a better match (e.g. via lockedPhoneNumber hint)
+                const existing = contactMap.get(otherId)!;
+                if (existing.source !== 'contact' && resolution.source === 'contact') {
+                    existing.name = resolution.displayName;
+                    existing.source = 'contact';
+                    existing.status = 'contact'; // Upgrade status
+                    existing.linkedUserId = resolution.linkedUserId || existing.linkedUserId;
+                }
             }
 
             const contact = contactMap.get(otherId)!;
@@ -225,7 +265,7 @@ export const Dashboard = () => {
                 currency: 'TRY', // Contact list is unified in TRY
                 lastActivity: data.lastActivity,
                 lastActionSnippet: data.lastSnippet,
-                status: data.source === 'contact' ? 'contact' : (data.source === 'user' && id.length > 20 ? 'system' : 'none'),
+                status: data.status, // Use status from stored data
                 // photoURL: undefined 
                 linkedUserId: data.linkedUserId,
                 hasUnreadActivity: data.hasUnreadActivity
@@ -252,6 +292,49 @@ export const Dashboard = () => {
         };
 
     }, [dashboardDebts, user, rates, resolveName, contactsMap]);
+
+    // Stable now for render phase (React Purity)
+    const [renderNow] = useState(() => Date.now());
+
+    const { upcomingToPay, upcomingToReceive, totalUpcomingCount } = useMemo(() => {
+        if (!user) return { upcomingToPay: [] as Debt[], upcomingToReceive: [] as Debt[], totalUpcomingCount: 0 };
+        
+        const next14Days = renderNow + (14 * 24 * 60 * 60 * 1000);
+
+        const filterUpcoming = (d: Debt) => {
+            if (d.status !== 'ACTIVE') return false;
+
+            // 1. Check direct due date
+            if (d.dueDate && d.dueDate.toMillis() <= next14Days) return true;
+
+            // 2. Check installments
+            if (d.installments && d.installments.length > 0) {
+                return d.installments.some(inst => !inst.isPaid && inst.dueDate.toMillis() <= next14Days);
+            }
+
+            return false;
+        };
+
+        const toPay = dashboardDebts.filter((d: Debt) => d.borrowerId === user.uid && filterUpcoming(d))
+            .sort((a: Debt, b: Debt) => {
+                const aTime = a.dueDate?.toMillis() || 0;
+                const bTime = b.dueDate?.toMillis() || 0;
+                return aTime - bTime;
+            });
+
+        const toReceive = dashboardDebts.filter((d: Debt) => d.lenderId === user.uid && filterUpcoming(d))
+            .sort((a: Debt, b: Debt) => {
+                const aTime = a.dueDate?.toMillis() || 0;
+                const bTime = b.dueDate?.toMillis() || 0;
+                return aTime - bTime;
+            });
+
+        return {
+            upcomingToPay: toPay,
+            upcomingToReceive: toReceive,
+            totalUpcomingCount: toPay.length + toReceive.length
+        };
+    }, [dashboardDebts, user, renderNow]);
 
     const { contactSummaries, totalsByCurrency, grandTotalInTRY } = useMemoResult;
     const { theme, toggleTheme } = useTheme();
@@ -298,6 +381,18 @@ export const Dashboard = () => {
                         {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                     </button>
                     <button
+                        onClick={() => setShowUpcomingPayments(true)}
+                        className="p-2.5 bg-gray-100 dark:bg-slate-700 rounded-full relative hover:bg-gray-200 transition-colors"
+                        aria-label="Yaklaşan Ödemeler"
+                    >
+                        <CalendarClock size={18} />
+                        {totalUpcomingCount > 0 && (
+                            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-blue-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white dark:border-slate-800 px-1">
+                                {totalUpcomingCount}
+                            </span>
+                        )}
+                    </button>
+                    <button
                         onClick={() => setShowNotifications(true)}
                         className="p-2.5 bg-gray-100 dark:bg-slate-700 rounded-full relative hover:bg-gray-200 transition-colors"
                         aria-label="Bildirimler"
@@ -328,11 +423,6 @@ export const Dashboard = () => {
 
             {/* Main Content */}
             <main className="px-4 py-6 max-w-5xl mx-auto">
-                {/* 1. Quick Pay Widget (Urgent Debts) */}
-                <QuickPayWidget 
-                    debts={dashboardDebts} 
-                    onPay={(debt) => setQuickPayDebt(debt)} 
-                />
 
                 {/* 2. Top Totals */}
                 <div className="flex gap-4 mb-8 overflow-x-auto pb-4 scrollbar-hide">
@@ -417,6 +507,13 @@ export const Dashboard = () => {
                 isOpen={showNotifications}
                 onClose={() => setShowNotifications(false)}
                 notifications={notifications}
+            />
+
+            <PendingPaymentsModal
+                isOpen={showUpcomingPayments}
+                onClose={() => setShowUpcomingPayments(false)}
+                toPay={upcomingToPay}
+                toReceive={upcomingToReceive}
             />
 
             {editingDebt && (

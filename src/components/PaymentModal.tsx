@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, formatAmountToWords } from '../utils/format';
+import { AmountInput } from './AmountInput';
 
 interface PaymentModalProps {
     isOpen: boolean;
@@ -57,19 +58,18 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-text-secondary mb-1">Tutar ({currency})</label>
-                        <input
-                            type="number"
+                    <div className="space-y-1">
+                        <AmountInput
+                            label={`Tutar (${currency})`}
                             value={amount}
-                            onChange={(e) => setAmount(e.target.value)}
-                            max={maxAmount}
-                            min={0}
-                            step="0.01"
-                            className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all text-lg font-semibold"
-                            placeholder="0.00"
+                            onChange={setAmount}
                             required
                         />
+                        {amount && (
+                            <p className="text-[10px] text-text-secondary italic text-left animate-in fade-in slide-in-from-top-1 px-1 mt-0.5">
+                                {formatAmountToWords(amount, currency)}
+                            </p>
+                        )}
                         <p className="text-xs text-text-secondary mt-1">
                             Kalan: {formatCurrency(maxAmount, currency)}
                         </p>

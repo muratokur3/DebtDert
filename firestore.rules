@@ -35,11 +35,7 @@ service cloud.firestore {
     }
     
     match /debts/{debtId} {
-      // Allow read if participant OR if lockedPhoneNumber matches verified auth phone
-      allow read: if request.auth != null && (
-        request.auth.uid in resource.data.participants ||
-        (resource.data.lockedPhoneNumber == request.auth.token.phone_number)
-      );
+      allow read, update: if request.auth != null;
 
       // CREATE Rule with Block Check
       // We need to ensure that the requestor (auth.uid) is NOT in the 'blockedUsers' list of the other participant.

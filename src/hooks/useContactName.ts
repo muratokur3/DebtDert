@@ -5,6 +5,7 @@ import { formatPhoneForDisplay as formatPhoneNumber } from '../utils/phoneUtils'
 interface ContactNameResult {
     displayName: string; // The best name found
     source: 'contact' | 'user' | 'phone';
+    status: 'contact' | 'system' | 'none'; // Standardized status for UI (Avatar color)
     originalName?: string; // If 'contact', this is the contact name. If 'user', display name.
     linkedUserId?: string;
 }
@@ -12,73 +13,78 @@ interface ContactNameResult {
 export const useContactName = () => {
     const { contacts, contactsMap } = useContacts();
 
-    const resolveName = useCallback((identifier: string, fallbackName?: string): ContactNameResult => {
-        // 1. Check Local Contacts (My Address Book)
+    const resolveName = useCallback((identifier: string, fallbackName?: string, phoneNumber?: string): ContactNameResult => {
+        // 1. Check Local Contacts (My Address Book) via Identifier
         // Identifier could be a Phone (E.164) or a UID. 
         // contactsMap is keyed by E.164 phone number.
+        
+        // A. Primary Match (If identifier IS the phone number key)
+        let contactMatch = contactsMap.get(identifier);
 
-        // Optimistic O(1) lookup
-        const contactMatch = contactsMap.get(identifier);
+        // B. Secondary Match via Phone Hint (If identifier is UID but we know the phone)
+        if (!contactMatch && phoneNumber) {
+            contactMatch = contactsMap.get(phoneNumber);
+        }
 
         if (contactMatch) {
             return {
                 displayName: contactMatch.name,
                 source: 'contact',
+                status: 'contact',
                 originalName: contactMatch.name,
                 linkedUserId: contactMatch.linkedUserId
             };
         }
 
-        // 2. Check by UID (Reverse Lookup)
-        // If identifier is a UID, it won't be in the phone map. Check linkedUserId.
+        // 2. Check by UID (Reverse Lookup in Array)
+        // If identifier is a UID, it won't be in the phone map key unless we map UIDs too.
         if (identifier.length > 20) {
             const uidMatch = contacts.find(c => c.linkedUserId === identifier);
             if (uidMatch) {
                 return {
                     displayName: uidMatch.name,
                     source: 'contact',
+                    status: 'contact',
                     originalName: uidMatch.name,
                     linkedUserId: uidMatch.linkedUserId
                 };
             }
         }
 
-        // If identifier is UID, we might need value check? 
-        // Current map is Phone -> Contact. 
-        // If identifier is UID, we can't find it in key map easily unless we also map UIDs.
-        // But rule #2 says Dept is tied to Phone. 
-        // Fallback to array find if not found in map (for UID/linkedUserId matching)
-        // Check if any contact has this linkedUserId?
-        // Actually, let's keep array search as fallback for edge/UID cases, but prefer map.
-        // Or create a secondary map? For now, simple fallback.
-        // Wait, 'contacts' is also available from useContacts if we destructured it.
-        // But for Phone scenarios (which is 99%), map is fast.
-
-        // ... (Fallbacks)
-
-        // 2. Check fallbackName (Snapshot Name from Debt/User)
+        // 3. Fallback to Fallback Name (System Name or Debt Snapshot)
         // If we have a fallback name that is NOT just the phone number itself, use it.
-        // This fixes the issue where "Ahmet" is passed as fallback, but the function sees a phone ID and returns formatted phone.
         if (fallbackName && fallbackName !== identifier && fallbackName.replace(/\D/g, '').length !== identifier.replace(/\D/g, '').length) {
+            
+            // If the identifier is long (UID) and we have a fallback name, it's likely a System User Name
+            // In this case, source is 'user' (System)
+            const source = identifier.length > 20 ? 'user' : 'user';
+            
+            // Status Logic: If Source is 'user' AND Identifier is UID -> System (Blue)
+            const status = (source === 'user' && identifier.length > 20) ? 'system' : 'none';
+
             return {
                 displayName: fallbackName,
-                source: 'user', // Technically 'snapshot' or 'user' provided
+                source: source, 
+                status: status,
                 originalName: fallbackName
             };
         }
 
-        // 3. Fallback to Phone
-        // If identifier looks like a phone, format it.
-        if (identifier.replace(/\D/g, '').length >= 10) {
+        // 4. Fallback to Phone Format
+        const phoneToFormat = phoneNumber || (identifier.replace(/\D/g, '').length >= 10 ? identifier : null);
+
+        if (phoneToFormat) {
             return {
-                displayName: formatPhoneNumber(identifier),
-                source: 'phone'
+                displayName: formatPhoneNumber(phoneToFormat),
+                source: 'phone',
+                status: 'none'
             };
         }
 
         return {
             displayName: fallbackName || identifier,
-            source: 'user'
+            source: 'user',
+            status: identifier.length > 20 ? 'system' : 'none'
         };
     }, [contacts, contactsMap]);
 

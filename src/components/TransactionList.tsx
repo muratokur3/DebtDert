@@ -17,30 +17,52 @@ import type { Transaction, User, Contact, Debt } from '../types';
 import { AdaptiveActionRow } from './AdaptiveActionRow';
 import { type SwipeAction } from './SwipeableItem';
 import { CreateDebtModal } from './CreateDebtModal';
+import { Avatar } from './Avatar';
 
 interface TransactionListProps {
     transactions: Transaction[];
     ledgerId: string;
     targetUser?: User | Contact | null;
     onRefresh?: () => void;
+    onLoadMore?: () => void;
+    hasMore?: boolean;
+    loadingMore?: boolean;
 }
 
 export const TransactionList: React.FC<TransactionListProps> = ({
     transactions,
     ledgerId,
-    targetUser
+    targetUser,
+    onLoadMore,
+    hasMore,
+    loadingMore
 }) => {
     const { user } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const [editingTx, setEditingTx] = useState<Transaction | null>(null);
     const [openRowId, setOpenRowId] = useState<string | null>(null);
 
+    // Infinite Scroll Intersection Observer
+    useEffect(() => {
+        if (!onLoadMore || !hasMore || loadingMore) return;
+
+        const observer = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting) {
+                onLoadMore();
+            }
+        }, { threshold: 0.1 });
+
+        const loader = document.getElementById('infinite-scroll-trigger');
+        if (loader) observer.observe(loader);
+
+        return () => observer.disconnect();
+    }, [onLoadMore, hasMore, loadingMore, transactions.length]);
+
     // Auto-Reset: Click anywhere else closes row
     useEffect(() => {
         const handleClickOutside = () => {
              if (openRowId) setOpenRowId(null);
         };
-        // Add listener to window with capture to detect interactions outside
         window.addEventListener('click', handleClickOutside);
         return () => window.removeEventListener('click', handleClickOutside);
     }, [openRowId]);
@@ -70,7 +92,7 @@ export const TransactionList: React.FC<TransactionListProps> = ({
         setEditingTx(tx);
     };
 
-    if (transactions.length === 0) {
+    if (transactions.length === 0 && !loadingMore) {
         return (
             <div className="text-center py-12 text-text-secondary">
                 <div className="text-4xl mb-3 opacity-50">💸</div>
@@ -81,58 +103,49 @@ export const TransactionList: React.FC<TransactionListProps> = ({
     }
 
     return (
-        <div className="space-y-3 pb-32">
+        <div className="space-y-3 px-4 pb-32">
             {(() => {
-                // Formatting Helper (Memoized or defined outside would be better, but inside is fine for now if not mutating)
                 const getGroupTitle = (date: Date) => {
                     const now = new Date();
                     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                     const yesterday = new Date(today);
                     yesterday.setDate(yesterday.getDate() - 1);
-                    
                     const checkDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-                    if (checkDate.getTime() === today.getTime()) {
-                        return 'Bugün';
-                    }
-                    if (checkDate.getTime() === yesterday.getTime()) {
-                        return 'Dün';
-                    }
+                    if (checkDate.getTime() === today.getTime()) return 'Bugün';
+                    if (checkDate.getTime() === yesterday.getTime()) return 'Dün';
                     
-                    // Check if within last 7 days
                     const diffTime = Math.abs(today.getTime() - checkDate.getTime());
                     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-
-                    if (diffDays < 7) {
-                        return format(date, 'EEEE', { locale: tr }); // Day Name (e.g. Salı)
-                    }
-
-                    return format(date, 'd MMMM yyyy', { locale: tr }); // Full Date
+                    if (diffDays < 7) return format(date, 'EEEE', { locale: tr });
+                    return format(date, 'd MMMM yyyy', { locale: tr });
                 };
 
                 return transactions.map((tx, index) => {
                     const isMine = tx.createdBy === user?.uid;
                     const isOutgoing = tx.direction === 'OUTGOING';
+                    // Perspective-aware coloring: Green if I gave (+) or They took (+)
+                    const isAlacak = isMine === isOutgoing;
 
-                    // 1-Hour Hard Delete Rule Check
                     const createdAt = tx.createdAt?.toDate ? tx.createdAt.toDate() : new Date();
                     const dateTitle = getGroupTitle(createdAt);
                     
+                    // Grouping Logic for DESC order: 
+                    // Show separator if it's the FIRST (top) item OR if its date differs from the PREVIOUS item (which is newer)
+                    // Actually, in DESC order (Newest -> Oldest), we show separator when the date CHANGED compared to the item ABOVE it.
                     let showSeparator = false;
                     if (index === 0) {
                         showSeparator = true;
                     } else {
-                        const prevTx = transactions[index - 1];
+                        const prevTx = transactions[index - 1]; // Item ABOVE (newer)
                         const prevCreatedAt = prevTx.createdAt?.toDate ? prevTx.createdAt.toDate() : new Date();
                         const prevDateTitle = getGroupTitle(prevCreatedAt);
-                         if (dateTitle !== prevDateTitle) {
+                        if (dateTitle !== prevDateTitle) {
                             showSeparator = true;
                         }
                     }
 
                     const isEditable = isMine && isTransactionEditable(createdAt);
-
-                    // Configure Actions
                     const rightActions: SwipeAction[] = [];
                     if (isEditable) {
                         rightActions.push({
@@ -152,26 +165,33 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                     }
 
                     const content = (
-                        <div
-                            className={clsx(
-                                "flex w-full relative h-full",
-                                isMine ? "justify-end" : "justify-start"
-                            )}
-                        >
-                            <div
-                                className={clsx(
-                                    "p-3 rounded-2xl shadow-sm border max-w-[85%] min-w-[140px] relative group transition-colors",
-                                    isOutgoing
-                                        ? "bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800"
-                                        : "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800",
-                                    isMine ? "rounded-tr-sm" : "rounded-tl-sm"
-                                )}
-                            >
+                        <div className={clsx(
+                            "flex items-end gap-1",
+                            isMine ? "flex-row-reverse" : "flex-row"
+                        )}>
+                            {/* Avatar */}
+                            <Avatar 
+                                uid={isMine ? user?.uid : (targetUser && 'uid' in targetUser ? targetUser.uid : (targetUser && 'linkedUserId' in targetUser ? targetUser.linkedUserId : undefined))}
+                                photoURL={!isMine && targetUser && 'photoURL' in targetUser ? targetUser.photoURL : undefined}
+                                name={!isMine && targetUser ? ('displayName' in targetUser ? targetUser.displayName : targetUser.name) : 'Ben'}
+                                size="sm"
+                                className="w-5 h-5 flex-shrink-0 mb-0.5"
+                                status={!isMine ? (targetUser && ('uid' in targetUser || ('linkedUserId' in targetUser && targetUser.linkedUserId)) ? 'system' : 'contact') : 'none'}
+                            />
+
+                            {/* Bubble */}
+                            <div className={clsx(
+                                "p-3 rounded-2xl shadow-sm border max-w-[80%] min-w-[120px] relative group transition-colors",
+                                isAlacak
+                                    ? "bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800"
+                                    : "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800",
+                                isMine ? "rounded-tr-sm" : "rounded-tl-sm"
+                            )}>
                                 <div className="flex flex-col gap-1">
                                     <div className="flex items-baseline justify-between gap-4">
                                         <p className={clsx(
                                             "text-lg font-bold leading-none",
-                                            isOutgoing ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"
+                                            isAlacak ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"
                                         )}>
                                             {formatCurrency(tx.amount, tx.currency || 'TRY')}
                                         </p>
@@ -179,7 +199,6 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                                             {tx.createdAt?.toDate ? format(tx.createdAt.toDate(), 'HH:mm', { locale: tr }) : ''}
                                         </div>
                                     </div>
-
                                     {tx.description && (
                                         <p className="text-sm text-text-primary leading-snug break-words">{tx.description}</p>
                                     )}
@@ -210,6 +229,26 @@ export const TransactionList: React.FC<TransactionListProps> = ({
                     );
                 });
             })()}
+
+            {/* Load More Indicator */}
+            {hasMore && (
+                <div id="infinite-scroll-trigger" className="flex justify-center py-6">
+                    {loadingMore ? (
+                        <div className="flex items-center gap-2 text-text-secondary">
+                            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                            <span className="text-xs font-medium">Eski işlemler yükleniyor...</span>
+                        </div>
+                    ) : (
+                        <div className="h-4" />
+                    )}
+                </div>
+            )}
+
+            {!hasMore && transactions.length > 10 && (
+                <div className="text-center py-8 text-text-secondary opacity-40">
+                    <p className="text-[10px] font-bold uppercase tracking-widest">Daha eski işlem bulunamadı</p>
+                </div>
+            )}
 
             {/* Edit Modal (Reusing CreateDebtModal) */}
             {editingTx && (

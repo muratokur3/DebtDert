@@ -59,7 +59,8 @@ export const Register = () => {
             const result = await startPhoneLogin(phone, recaptchaVerifier.current);
             setConfirmationResult(result);
             setStep('OTP');
-        } catch (error: any) {
+        } catch (err: unknown) {
+            const error = err as { code?: string; message?: string };
             console.error(error);
             showAlert("Hata", `SMS gönderilemedi: ${error.code || error.message}`, "error");
         } finally {
@@ -95,9 +96,10 @@ export const Register = () => {
 
             await linkPasswordToPhone(currentUser, password, displayName, email);
             navigate('/');
-        } catch (error: any) {
+        } catch (err: unknown) {
+            const error = err as { code?: string; message?: string };
             console.error(error);
-            showAlert("Kayıt Hatası", `Hesap oluşturulamadı: ${error.code || error.message}`, "error");
+            showAlert("Kayıt Hatası", `Hesap oluşturulamadı: ${error.code || error.message || 'Bilinmeyen hata'}`, "error");
         } finally {
             setLoading(false);
         }

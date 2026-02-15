@@ -23,6 +23,7 @@ interface DebtCardProps {
     isNew?: boolean;
     className?: string; // NEW: Accept className override
     hideMenu?: boolean;
+    hideAvatar?: boolean; // NEW: Option to hide avatar
 }
 
 export const DebtCard: React.FC<DebtCardProps> = ({
@@ -34,7 +35,8 @@ export const DebtCard: React.FC<DebtCardProps> = ({
     variant = 'default',
     isNew = false,
     className,
-    hideMenu = false
+    hideMenu = false,
+    hideAvatar = false
 }) => {
     const { resolveName } = useContactName();
     const { showConfirm, showAlert } = useModal();
@@ -50,7 +52,7 @@ export const DebtCard: React.FC<DebtCardProps> = ({
 
     // Name Resolution
     const initialResolution = resolveName(otherId, rawOtherName);
-    let { displayName: otherPartyName, source } = initialResolution;
+    let { displayName: otherPartyName, source, status: resolvedStatus } = initialResolution;
     const { linkedUserId } = initialResolution;
 
     if (source !== 'contact' && lockedPhone) {
@@ -58,9 +60,11 @@ export const DebtCard: React.FC<DebtCardProps> = ({
         if (lockedResolution.source === 'contact') {
             otherPartyName = lockedResolution.displayName;
             source = 'contact';
+            resolvedStatus = 'contact';
         } else if (source === 'user' && otherPartyName === otherId) {
             otherPartyName = lockedResolution.displayName;
             source = lockedResolution.source;
+            resolvedStatus = lockedResolution.status;
         }
     }
 
@@ -117,7 +121,7 @@ export const DebtCard: React.FC<DebtCardProps> = ({
         setShowMenu(false);
         if (!isEditable) {
              showAlert("Hata", "Düzenleme süresi doldu.", "error");
-             return;
+              return;
         }
         setShowEditModal(true);
     };
@@ -138,6 +142,86 @@ export const DebtCard: React.FC<DebtCardProps> = ({
 
     // Visual Styling
     const isChat = variant === 'chat';
+    const isMine = debt.createdBy === currentUserId;
+
+    if (isChat) {
+        const nextInst = debt.installments?.find(i => !i.isPaid);
+
+        return (
+            <div className={clsx("flex w-full mb-3 px-1", isMine ? "justify-end" : "justify-start")}>
+                <div className={clsx(
+                    "flex items-end gap-3",
+                    isMine ? "flex-row-reverse" : "flex-row"
+                )}>
+                    {/* Avatar */}
+                    {!hideAvatar && (
+                        <Avatar
+                            uid={isMine ? currentUserId : (linkedUserId || (otherId.length > 20 ? otherId : undefined))}
+                            name={isMine ? 'Ben' : finalDisplayName}
+                            size="md"
+                            className="w-10 h-10 sm:w-15 sm:h-15 flex-shrink-0 mb-0.5"
+                            status={isMine ? 'system' : resolvedStatus}
+                        />
+                    )}
+
+                    {/* Bubble Card */}
+                    <div 
+                        onClick={onClick}
+                        className={clsx(
+                            "p-3 rounded-2xl border-2 shadow-sm transition-all max-w-[92vw] sm:max-w-[92%] min-w-[180px] relative group cursor-pointer bg-white dark:bg-slate-900 active:scale-[0.98]",
+                            isLender ? "border-purple-200 dark:border-purple-800" : "border-orange-200 dark:border-orange-800",
+                            isMine ? "rounded-tr-sm bg-purple-50/10" : "rounded-tl-sm bg-white dark:bg-slate-900",
+                            (disabled || isRejectedByReceiver) && "opacity-50 grayscale"
+                        )}
+                    >
+                        <div className="flex flex-col gap-1">
+                            {/* Title & Date */}
+                            <div className="flex justify-between items-start gap-2">
+                                <h3 className="font-bold text-[13px] text-text-primary truncate">
+                                    {debt.note || "Vadeli Borç"}
+                                </h3>
+                                <div className="text-[9px] text-text-secondary opacity-60 whitespace-nowrap pt-0.5">
+                                    {debt.createdAt?.toDate ? format(debt.createdAt.toDate(), 'd MMM', { locale: tr }) : ''}
+                                </div>
+                            </div>
+
+                            {/* Amount */}
+                            <div className="flex items-baseline gap-1.5 mt-0.5">
+                                <span className={clsx(
+                                    "text-base font-bold leading-none",
+                                    isPaid ? "text-text-secondary line-through" : (isLender ? "text-purple-700 dark:text-purple-400" : "text-orange-700 dark:text-orange-400")
+                                )}>
+                                    {formatCurrency(debt.remainingAmount, debt.currency)}
+                                </span>
+                                {debt.originalAmount && debt.originalAmount !== debt.remainingAmount && (
+                                    <span className="text-[9px] text-text-tertiary">
+                                        / {formatCurrency(debt.originalAmount, debt.currency)}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Status/Next Installment */}
+                            {isPaid ? (
+                                <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 dark:text-green-500 uppercase tracking-tight mt-1">
+                                    <CheckCircle size={10} /> TAMAMLANDI
+                                </div>
+                            ) : nextInst ? (
+                                <div className="flex items-center gap-1 text-[9px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-tight mt-1">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+                                    VADE: {format(nextInst.dueDate.toDate(), 'd MMM', { locale: tr })}
+                                    <span className="opacity-60 ml-0.5">({formatCurrency(nextInst.amount, debt.currency)})</span>
+                                </div>
+                            ) : debt.dueDate && (
+                                <div className="flex items-center gap-1 text-[9px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-tight mt-1">
+                                    VADE: {format(debt.dueDate.toDate(), 'd MMM', { locale: tr })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <>
@@ -145,14 +229,14 @@ export const DebtCard: React.FC<DebtCardProps> = ({
                 onClick={onClick}
                 className={clsx(
                     "p-4 border-2 active:scale-[0.98] transition-all cursor-pointer relative shadow-sm hover:shadow-md bg-white dark:bg-slate-900 mb-3 group",
-                    isChat ? "rounded-xl border-dashed" : "rounded-2xl",
-                    isNew && !isChat && "ring-2 ring-green-500/20",
+                    "rounded-2xl",
+                    isNew && "ring-2 ring-green-500/20",
                     isLender ? "border-purple-200 dark:border-purple-800" : "border-orange-200 dark:border-orange-800",
-                    className // Merge className if provided
+                    className
                 )}
             >
                 <div className="flex items-start gap-4">
-                    {!isChat && (
+                    {!hideAvatar && (
                         <Avatar
                             name={finalDisplayName}
                             size="md"
@@ -166,29 +250,26 @@ export const DebtCard: React.FC<DebtCardProps> = ({
                         <div className="flex justify-between items-start mb-1 gap-3">
                             <div className="min-w-0 flex-1">
                                 <h3 className={clsx(
-                                    "font-bold text-gray-900 dark:text-white truncate flex items-center gap-2",
-                                    isChat ? "text-base" : "text-lg",
+                                    "font-bold text-gray-900 dark:text-white truncate flex items-center gap-2 text-lg",
                                     (disabled || isRejectedByReceiver) && "line-through text-gray-500"
                                 )}>
                                     {debt.note || `${formatCurrency(debt.originalAmount || debt.remainingAmount, debt.currency)} Borç Kaydı`}
                                 </h3>
-                                {isChat && (
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <span className={clsx(
-                                            "text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider",
-                                            isLender
-                                                ? "bg-purple-50 text-purple-700 border-purple-200"
-                                                : "bg-orange-50 text-orange-700 border-orange-200"
-                                        )}>
-                                            {isLender ? "VERİLEN" : "ALINAN"}
+                                <div className="flex items-center gap-2 mt-1">
+                                    <span className={clsx(
+                                        "text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider",
+                                        isLender
+                                            ? "bg-purple-50 text-purple-700 border-purple-200"
+                                            : "bg-orange-50 text-orange-700 border-orange-200"
+                                    )}>
+                                        {isLender ? "VERİLEN" : "ALINAN"}
+                                    </span>
+                                    {hasInstallments && (
+                                        <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                            {paidInstallments}/{totalInstallments} Taksit
                                         </span>
-                                        {hasInstallments && (
-                                            <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-                                                {paidInstallments}/{totalInstallments} Taksit
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
+                                    )}
+                                </div>
                             </div>
 
                             <div className="flex flex-col items-end shrink-0">
@@ -202,19 +283,23 @@ export const DebtCard: React.FC<DebtCardProps> = ({
                                 )}>
                                     {formatCurrency(debt.remainingAmount, debt.currency)}
                                 </div>
-                                
                                 {debt.originalAmount && debt.originalAmount !== debt.remainingAmount && (
                                     <div className="text-[10px] text-text-tertiary">
                                         Toplam: {formatCurrency(debt.originalAmount, debt.currency)}
                                     </div>
                                 )}
-
+                                {debt.dueDate && (
+                                    <div className="flex items-center gap-1 text-[10px] font-bold text-orange-600 dark:text-orange-400 mt-1 uppercase tracking-tighter">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+                                        Vade: {format(debt.dueDate.toDate(), 'd MMM', { locale: tr })}
+                                    </div>
+                                )}
                                 <div className="text-[10px] text-text-secondary opacity-70 mt-1">
                                     {debt.createdAt?.toDate ? format(debt.createdAt.toDate(), 'd MMM', { locale: tr }) : ''}
                                 </div>
                             </div>
                         </div>
-                        
+
                         {/* Progress Bar */}
                         {debt.originalAmount && debt.originalAmount > 0 && (
                              <div className="w-full h-1.5 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden mt-3">

@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Debt, DebtStatus, PaymentLog, User, Contact, Installment } from '../types';
-import { cleanPhone as cleanPhoneNumber } from '../utils/phoneUtils';
+import { cleanPhone as cleanPhoneNumber, isValidPhone } from '../utils/phoneUtils';
 import { checkBlockStatus } from './blockService';
 
 // --- Helper Functions ---
@@ -100,6 +100,93 @@ async function updateContactActivity(actorId: string, targetId: string, message:
     }
 }
 
+export const addContact = async (currentUserId: string, name: string, phoneNumber: string, linkedUserId?: string) => {
+    try {
+        if (!isValidPhone(phoneNumber)) {
+            throw new Error(`Geçersiz telefon formatı: ${phoneNumber}. Lütfen E.164 formatında (+ÜlkeKoduNumara) giriniz.`);
+        }
+        const cleanPhone = phoneNumber; // Already valid E.164
+        
+        const contactsRef = collection(db, 'users', currentUserId, 'contacts');
+        
+        const contactData: Record<string, unknown> = {
+            name,
+            phoneNumber: cleanPhone,
+            updatedAt: serverTimestamp()
+        };
+
+        if (linkedUserId) {
+            contactData.linkedUserId = linkedUserId;
+        }
+
+        // Check if contact already exists by phoneNumber or linkedUserId
+        let existingContactQuery;
+        if (linkedUserId) {
+            existingContactQuery = query(contactsRef, where('linkedUserId', '==', linkedUserId), limit(1));
+        } else {
+            existingContactQuery = query(contactsRef, where('phoneNumber', '==', cleanPhone), limit(1));
+        }
+
+        const existingContactSnap = await getDocs(existingContactQuery);
+
+        if (!existingContactSnap.empty) {
+            // Update existing contact
+            const docRef = existingContactSnap.docs[0].ref;
+            await updateDoc(docRef, contactData);
+            return docRef.id;
+        } else {
+            // Add new contact
+            const docRef = await addDoc(contactsRef, {
+                ...contactData,
+                createdAt: serverTimestamp()
+            });
+            return docRef.id;
+        }
+    } catch (error) {
+        console.error("Error adding/updating contact:", error);
+        throw error;
+    }
+};
+
+/**
+ * Scans ALL contacts for the current user and normalizes their phone numbers to E.164.
+ * This is a one-time/background cleanup tool to fix "Dirty Data" in the user's address book.
+ */
+export const normalizeAllUserContacts = async (userId: string): Promise<number> => {
+    try {
+        const contactsRef = collection(db, 'users', userId, 'contacts');
+        const snapshot = await getDocs(contactsRef);
+        
+        let fixedCount = 0;
+        const batch = writeBatch(db);
+        
+        snapshot.docs.forEach(docSnap => {
+            const data = docSnap.data();
+            const originalPhone = data.phoneNumber || '';
+            const normalizedPhone = cleanPhoneNumber(originalPhone);
+            
+            // If the phone is NOT in E.164 format or differs after cleaning
+            if (normalizedPhone && normalizedPhone !== originalPhone) {
+                batch.update(docSnap.ref, { 
+                    phoneNumber: normalizedPhone,
+                    updatedAt: serverTimestamp()
+                });
+                fixedCount++;
+            }
+        });
+        
+        if (fixedCount > 0) {
+            await batch.commit();
+            console.log(`[Cleanup] Normalized ${fixedCount} contacts for ${userId}`);
+        }
+        
+        return fixedCount;
+    } catch (error) {
+        console.error("Error normalizing contacts:", error);
+        return 0;
+    }
+};
+
 export const markContactAsRead = async (currentUserId: string, targetUserId: string) => {
     try {
         const contactsRef = collection(db, 'users', currentUserId, 'contacts');
@@ -145,26 +232,28 @@ export const createDebt = async (
     ) => {
         const isLending = type === 'LENDING';
 
-        // ... (existing logic for target determination) ...
-        // Determine if targetUserId is a phone number or UID
-        let finalTargetId = targetUserId;
-        const cleanTarget = cleanPhoneNumber(targetUserId);
-
-        // If targetUserId looks like a phone number (not a long UID)
-        // cleanTarget will be E.164 if it's a phone.
-        if (targetUserId.length <= 15 || targetUserId.startsWith('+')) {
-            // NEW: Multi-Phone Registry Lookup
-            const { resolvePhoneToUid } = await import('./identity'); // Dynamic import to avoid circular dependency
-            const resolvedUid = await resolvePhoneToUid(cleanTarget);
-
-            if (resolvedUid) {
-                finalTargetId = resolvedUid;
-                // Fetch basic user info if needed for display? 
-                // DebtCard will handle display resolution. We just need the ID.
-            } else {
-                finalTargetId = cleanTarget; // Use cleaned phone as ID if no user found
-            }
+    // --- 1. STRICT E.164 ENFORCEMENT ---
+    let finalTargetId = targetUserId;
+    let cleanTarget: string | null = null;
+    
+    if (targetUserId.length < 20) {
+        if (!isValidPhone(targetUserId)) {
+            throw new Error(`Geçersiz telefon formatı: ${targetUserId}. Borç oluşturmak için geçerli bir E.164 numarası gereklidir.`);
         }
+
+        cleanTarget = targetUserId;
+
+        // Ghost User (Registered User) Check
+        const { resolvePhoneToUid } = await import('./identity');
+        const resolvedUid = await resolvePhoneToUid(targetUserId);
+
+        if (resolvedUid) {
+            finalTargetId = resolvedUid;
+        } else {
+            finalTargetId = targetUserId;
+        }
+    }
+    // ------------------------------------
 
         const lenderId = isLending ? currentUserId : finalTargetId;
         const lenderName = isLending ? currentUserName : targetUserName;
@@ -378,13 +467,12 @@ export const updateDebtHardReset = async (
                 newStatus = 'AUTO_HIDDEN';
             }
 
-            // 5. Prepare Updates (Reset createdAt effectively making it 'New')
+            // 5. Prepare Updates (Maintain original createdAt, update modified status)
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const docUpdates: any = {
                 ...updates,
                 remainingAmount: newRemaining,
                 status: newStatus,
-                createdAt: serverTimestamp(), // RESET TIMER
                 updatedAt: serverTimestamp(),
                 auditMeta: { // ✅ Added Audit
                     actorId: currentUserId,
@@ -514,6 +602,7 @@ export const makePayment = async (
         transaction.update(debtRef, {
             remainingAmount: newRemaining,
             status: newStatus,
+            updatedAt: serverTimestamp(),
             ...(updatedInstallments && { installments: updatedInstallments })
         });
 
@@ -602,7 +691,8 @@ export const respondToDebtRequest = async (debtId: string, status: 'ACTIVE' | 'R
 };
 
 export const searchUserByPhone = async (phoneNumber: string): Promise<User | null> => {
-    const cleanPhone = cleanPhoneNumber(phoneNumber);
+    // Attempt to format to E.164 if not already, but usually it should be.
+    const cleanPhone = cleanPhoneNumber(phoneNumber) || phoneNumber;
 
     // Use registry lookup to resolve UID securely
     const { resolvePhoneToUid } = await import('./identity');
@@ -645,98 +735,26 @@ export const searchUserByPhone = async (phoneNumber: string): Promise<User | nul
 };
 // --- Contacts Services ---
 
-export const addContact = async (currentUserId: string, name: string, phoneNumber: string, linkedUserId?: string) => {
-    try {
-        const cleanPhone = cleanPhoneNumber(phoneNumber);
-        const contactsRef = collection(db, 'users', currentUserId, 'contacts');
-
-        // Check if phone number already exists (Try strict clean first)
-        const q = query(contactsRef, where('phoneNumber', '==', cleanPhone));
-        let querySnapshot = await getDocs(q);
-
-        // Double check: If strict failed, maybe stored as non-standard? 
-        // Example: DB has "0555..." but clean is "+90555..."
-        // Or DB has "+90 555" (spaces).
-        if (querySnapshot.empty && phoneNumber !== cleanPhone) {
-            const q2 = query(contactsRef, where('phoneNumber', '==', phoneNumber));
-            const snap2 = await getDocs(q2);
-            if (!snap2.empty) {
-                querySnapshot = snap2;
-            }
-        }
-
-        // Also check if stripped version matches (e.g. DB has 5551234567, clean is +905551234567)
-        if (querySnapshot.empty) {
-            const simple = phoneNumber.replace(/\D/g, '');
-            if (simple.length > 5 && simple !== cleanPhone && simple !== phoneNumber) {
-                const q3 = query(contactsRef, where('phoneNumber', '==', simple));
-                const snap3 = await getDocs(q3);
-                if (!snap3.empty) querySnapshot = snap3;
-            }
-        }
-
-        if (!querySnapshot.empty) {
-            // Update existing contact if name changed, or just return ID
-            const existingDoc = querySnapshot.docs[0];
-            if (existingDoc.data().name !== name) {
-                await updateDoc(doc(contactsRef, existingDoc.id), { name });
-            }
-            return existingDoc.id;
-        }
-
-        // Check if this phone corresponds to a system user
-        let finalLinkedUserId = linkedUserId || null;
-        if (!finalLinkedUserId) {
-            const { resolvePhoneToUid } = await import('./identity');
-            const resolvedUid = await resolvePhoneToUid(cleanPhone);
-            if (resolvedUid) {
-                finalLinkedUserId = resolvedUid;
-            }
-        }
-
-        const docRef = await addDoc(contactsRef, {
-            name,
-            phoneNumber: cleanPhone,
-            linkedUserId: finalLinkedUserId,
-            createdAt: serverTimestamp()
-        });
-        return docRef.id;
-    } catch (error) {
-        console.error("Error adding contact:", error);
-        throw error;
-    }
-};
-
 export const getContacts = async (userId: string) => {
-    try {
-        const contactsRef = collection(db, 'users', userId, 'contacts');
-        const q = query(contactsRef, orderBy('name'));
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        })) as Contact[];
-    } catch (error) {
-        console.error("Error getting contacts:", error);
-        return [];
-    }
+    const contactsRef = collection(db, 'users', userId, 'contacts');
+    const q = query(contactsRef, orderBy('name', 'asc'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contact));
 };
 
 export const deleteContact = async (userId: string, contactId: string) => {
-    try {
-        await deleteDoc(doc(db, 'users', userId, 'contacts', contactId));
-    } catch (error) {
-        console.error("Error deleting contact:", error);
-        throw error;
-    }
+    const contactRef = doc(db, 'users', userId, 'contacts', contactId);
+    await deleteDoc(contactRef);
 };
 
 export const updateContact = async (userId: string, contactId: string, data: Partial<Contact>) => {
     try {
-        // If updating phone, make sure to clean it
         const updateData = { ...data };
         if (updateData.phoneNumber) {
-            updateData.phoneNumber = cleanPhoneNumber(updateData.phoneNumber);
+            if (!isValidPhone(updateData.phoneNumber)) {
+                throw new Error(`Geçersiz telefon formatı: ${updateData.phoneNumber}. Lütfen E.164 formatında (+ÜlkeKoduNumara) giriniz.`);
+            }
+            // phoneNumber is already E.164 if valid
         }
 
         const contactRef = doc(db, 'users', userId, 'contacts', contactId);
@@ -766,114 +784,61 @@ export const searchContacts = async (userId: string, searchQuery: string) => {
 
 
 // Redefined logic below for claimDebts to include Contact Linking
-// Enhanced Claiming Logic for Data Integrity
-export const claimLegacyDebts = async (userId: string, phoneNumber: string) => {
+// Enhanced Claiming Logic for Data Integrity (DEBUG VERSION)
+export const claimLegacyDebts = async (userId: string, phoneNumber: string): Promise<number> => {
     try {
-        const cleanPhone = cleanPhoneNumber(phoneNumber);
-        const affectedUserIds = new Set<string>();
+        const cleanPhone = cleanPhoneNumber(phoneNumber); // Expected E.164 (+90...)
+        if (!cleanPhone) return 0;
 
-        // We need to check both Lender and Borrower fields for the Phone Number
-        // And replace it with the UID.
+        // Generate Possible Formats for Legacy Matching
+        const bare = cleanPhone.replace('+90', ''); // 5551112233
+        const local = '0' + bare; // 05551112233
+        const possiblePhones = [cleanPhone, local, bare];
 
-        // 1. Where I am the LENDER (as Phone)
-        const qLender = query(collection(db, 'debts'), where('lenderId', '==', cleanPhone));
-        const lenderSnapshot = await getDocs(qLender);
-
-        const lenderUpdates = lenderSnapshot.docs.map(doc => {
-            const data = doc.data();
-            if (data.borrowerId && data.borrowerId.length > 20) affectedUserIds.add(data.borrowerId);
-
-            return runTransaction(db, async (transaction) => {
-                const debtRef = doc.ref;
-                const debtDoc = await transaction.get(debtRef);
-                if (!debtDoc.exists()) return;
-
-                const currentData = debtDoc.data();
-                // Security Check: If already claimed by another UID, skip?
-                // Assuming phone uniqueness, this is safe.
-
-                const participants = currentData.participants || [];
-                // Remove phone, Add UID
-                const phoneIndex = participants.indexOf(cleanPhone);
-                if (phoneIndex > -1) participants.splice(phoneIndex, 1);
-                if (!participants.includes(userId)) participants.push(userId);
-
-                // Ensure lockedPhoneNumber is set
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const updates: any = {
-                    lenderId: userId,
-                    participants
-                };
-
-                // CRITICAL: If no lockedPhoneNumber exists, using the phone number we just claimed
-                if (!currentData.lockedPhoneNumber) {
-                    updates.lockedPhoneNumber = cleanPhone;
-                }
-
-                transaction.update(debtRef, updates);
-            });
+        const debtsRef = collection(db, 'debts');
+        // Use array-contains-any to find debts containing ANY of the possible formats in participants
+        const q = query(debtsRef, where('participants', 'array-contains-any', possiblePhones));
+        
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) return 0;
+        
+        const batch = writeBatch(db);
+        let updateCount = 0;
+        
+        snapshot.docs.forEach(docSnap => {
+            const data = docSnap.data();
+            const participants = data.participants || [];
+            
+            // Filter out ANY of the matched phone formats, Add UID
+            const updatedParticipants = participants.filter((p: string) => !possiblePhones.includes(p));
+            if (!updatedParticipants.includes(userId)) updatedParticipants.push(userId);
+            
+            const updates: Record<string, unknown> = {
+                participants: updatedParticipants
+            };
+            
+            // Update lender/borrower if they match the phone number
+            if (possiblePhones.includes(data.lenderId)) updates.lenderId = userId;
+            if (possiblePhones.includes(data.borrowerId)) updates.borrowerId = userId;
+            
+            // Normalize locked phone number
+            updates.lockedPhoneNumber = cleanPhone;
+            
+            batch.update(docSnap.ref, updates);
+            updateCount++;
         });
-
-        // 2. Where I am the BORROWER (as Phone)
-        const qBorrower = query(collection(db, 'debts'), where('borrowerId', '==', cleanPhone));
-        const borrowerSnapshot = await getDocs(qBorrower);
-
-        const borrowerUpdates = borrowerSnapshot.docs.map(doc => {
-            const data = doc.data();
-            if (data.lenderId && data.lenderId.length > 20) affectedUserIds.add(data.lenderId);
-
-            return runTransaction(db, async (transaction) => {
-                const debtRef = doc.ref;
-                const debtDoc = await transaction.get(debtRef);
-                if (!debtDoc.exists()) return;
-
-                const currentData = debtDoc.data();
-                const participants = currentData.participants || [];
-
-                // Remove phone, Add UID
-                const phoneIndex = participants.indexOf(cleanPhone);
-                if (phoneIndex > -1) participants.splice(phoneIndex, 1);
-                if (!participants.includes(userId)) participants.push(userId);
-
-                // Ensure lockedPhoneNumber is set
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const updates: any = {
-                    borrowerId: userId,
-                    participants
-                };
-
-                // CRITICAL: If no lockedPhoneNumber exists, using the phone number we just claimed
-                if (!currentData.lockedPhoneNumber) {
-                    updates.lockedPhoneNumber = cleanPhone;
-                }
-
-                transaction.update(debtRef, updates);
-            });
-        });
-
-        await Promise.all([...lenderUpdates, ...borrowerUpdates]);
-
-        // 3. Link Contacts for Affected Users (Previous Logic)
-        // For each user who had a debt with me (as phone), find their contact for me and update link
-        for (const otherUserId of affectedUserIds) {
-            const contactsRef = collection(db, 'users', otherUserId, 'contacts');
-            const q = query(contactsRef, where('phoneNumber', '==', cleanPhone));
-            const snaps = await getDocs(q);
-
-            if (!snaps.empty) {
-                const batch = writeBatch(db);
-                snaps.docs.forEach(d => {
-                    batch.update(d.ref, { linkedUserId: userId });
-                });
-                await batch.commit();
-            }
+        
+        if (updateCount > 0) {
+            await batch.commit();
+            console.log(`[GhostProtocol] ${updateCount} borç başarıyla üzerine alındı.`);
         }
+        
+        return updateCount;
 
-        console.log(`Successfully claimed legacy debts for ${userId} (${cleanPhone})`);
-
-    } catch (error) {
-        console.error("Error claiming legacy debts:", error);
-        throw error;
+    } catch (error: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+        console.error("[GhostProtocol] HATA:", error);
+        return 0;
     }
 };
 
@@ -1418,7 +1383,7 @@ export const updateDebt = async (debtId: string, data: Partial<Debt>, actorId?: 
                 });
             }
 
-            const updates: any = { 
+            const updates: Record<string, unknown> = {
                 ...data,
                 ...(updatedEditHistory.length > 0 && { editHistory: updatedEditHistory }),
                 updatedAt: serverTimestamp(),
@@ -1609,5 +1574,92 @@ export const deletePersonHistory = async (
     } catch (error) {
         console.error("Error deleting person history:", error);
         throw error;
+    }
+};
+
+/**
+ * AUTO-LINK (SELF REPAIR):
+ * Scans for debts involving System Users (IDs > 20) who are NOT linked in the local address book.
+ * If a matching phone number refers to a local contact, it updates the contact with the UID.
+ */
+export const autoLinkSystemContacts = async (
+    currentUserId: string,
+    existingDebts: Debt[],
+    contactsMap: Map<string, Contact>
+) => {
+    try {
+        // 1. Identify "Blue" System Users (UIDs > 20) with no local link
+        const systemUserIds = new Set<string>();
+        
+        existingDebts.forEach(d => {
+             const otherId = d.lenderId === currentUserId ? d.borrowerId : d.lenderId;
+             if (otherId && otherId.length > 20) {
+                 // Check if it's already linked?
+                 // contactsMap is keyed by Phone AND ID.
+                 // If contactsMap.has(otherId), it means we know this UID as a contact.
+                 // If NOT, it's a candidate for auto-linking.
+                 if (!contactsMap.has(otherId)) {
+                     systemUserIds.add(otherId);
+                 }
+             }
+        });
+
+        if (systemUserIds.size === 0) return 0;
+
+        console.log(`[AutoLink] Checking ${systemUserIds.size} unlinked system users...`);
+
+        // 2. Resolve Candidate UIDs to Phones (Cloud Fetch)
+        const batch = writeBatch(db);
+        let linkCount = 0;
+        const contactsRef = collection(db, 'users', currentUserId, 'contacts');
+
+        for (const uid of systemUserIds) {
+             // A. Fetch System User Profile to get their phone
+             try {
+                 const userSnap = await getDoc(doc(db, 'users', uid));
+                 if (!userSnap.exists()) continue;
+
+                 const userData = userSnap.data() as User;
+                 const userPhone = userData.primaryPhoneNumber || userData.phoneNumber;
+                 
+                 if (userPhone) {
+                     const cleanUserPhone = cleanPhoneNumber(userPhone);
+
+                     // B. Check if we have this phone in our map (Orange state but unlinked)
+                     // Using our robust map lookups
+                     const localContact = contactsMap.get(cleanUserPhone);
+                     
+                     if (localContact) {
+                         // FOUND A MATCH!
+                         // The user has this person in contacts, but the contact entry doesn't have the linkedUserId.
+                         
+                         // Double check not to overwrite if it already has a DIFFERENT link (conflict)?
+                         if (!localContact.linkedUserId) {
+                             console.log(`[AutoLink] Linking ${localContact.name} (${cleanUserPhone}) -> ${uid}`);
+                             
+                             const contactRef = doc(contactsRef, localContact.id);
+                             batch.update(contactRef, { 
+                                 linkedUserId: uid,
+                                 updatedAt: serverTimestamp() 
+                             });
+                             linkCount++;
+                         }
+                     }
+                 }
+             } catch (e) {
+                 console.warn(`[AutoLink] Failed to process uid ${uid}`, e);
+             }
+        }
+
+        if (linkCount > 0) {
+            await batch.commit();
+            console.log(`[AutoLink] Successfully linked ${linkCount} contacts.`);
+        }
+        
+        return linkCount;
+
+    } catch (error) {
+        console.error("Error in autoLinkSystemContacts:", error);
+        return 0;
     }
 };

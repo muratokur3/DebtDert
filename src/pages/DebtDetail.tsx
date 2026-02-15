@@ -283,6 +283,12 @@ export const DebtDetail = () => {
                         {formatCurrency(debt.remainingAmount, debt.currency)}
                     </h2>
 
+                    {debt.dueDate && (
+                        <div className="mb-4 inline-flex items-center gap-2 px-3 py-1 bg-orange-500/10 text-orange-600 dark:text-orange-400 rounded-full text-xs font-bold border border-orange-500/20">
+                            Vade Tarihi: {format(debt.dueDate.toDate(), 'd MMMM yyyy', { locale: tr })}
+                        </div>
+                    )}
+
                     <div className="relative h-3 bg-background rounded-full overflow-hidden mb-2 border border-border">
                         <div
                             className={clsx(
@@ -298,9 +304,21 @@ export const DebtDetail = () => {
                         <span>%100</span>
                     </div>
 
-                    <div className="mt-4 pt-4 border-t border-border flex justify-between text-xs text-text-secondary">
-                        <span>Ekleyen: {debt.createdBy === user?.uid ? 'Siz' : (user?.uid === debt.lenderId ? debt.borrowerName : debt.lenderName)}</span>
-                        <span>{debt.createdAt ? format(debt.createdAt.toDate(), 'd MMM yyyy HH:mm', { locale: tr }) : '-'}</span>
+                    <div className="mt-4 pt-4 border-t border-border space-y-2">
+                        <div className="flex justify-between text-[10px] text-text-secondary uppercase tracking-wider font-semibold">
+                            <span>Oluşturulma</span>
+                            <span>{debt.createdAt ? format(debt.createdAt.toDate(), 'd MMM yyyy HH:mm', { locale: tr }) : '-'}</span>
+                        </div>
+                        {debt.updatedAt && debt.updatedAt.toMillis() > (debt.createdAt?.toMillis() || 0) + 1000 && (
+                            <div className="flex justify-between text-[10px] text-text-secondary uppercase tracking-wider font-semibold">
+                                <span>Son Güncelleme</span>
+                                <span>{format(debt.updatedAt.toDate(), 'd MMM yyyy HH:mm', { locale: tr })}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between text-[10px] text-text-secondary uppercase tracking-wider font-semibold">
+                            <span>Kayıt Sahibi</span>
+                            <span>{debt.createdBy === user?.uid ? 'Siz' : (user?.uid === debt.lenderId ? debt.borrowerName : debt.lenderName)}</span>
+                        </div>
                     </div>
                 </div>
                 
@@ -357,6 +375,7 @@ export const DebtDetail = () => {
                     currency={debt.currency}
                     isLender={!!isLender}
                     debtId={debt.id}
+                    otherPartyId={isLender ? debt.borrowerId : debt.lenderId}
                 />
             </main>
 

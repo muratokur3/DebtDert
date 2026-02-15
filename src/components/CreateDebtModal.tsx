@@ -1,20 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, ChevronDown, ChevronUp, Plus, Search, Ban, RefreshCw, MessageCircle, AlertTriangle, Paperclip, Trash2, File as FileIcon } from 'lucide-react';
+import { X, FileText, ChevronDown, ChevronUp, Search, Ban, RefreshCw, MessageCircle, AlertTriangle, Paperclip, Trash2, File as FileIcon } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { SelectedUserCard } from './SelectedUserCard';
 
 import { searchUserByPhone, searchContacts, createDebt, updateDebtHardReset } from '../services/db';
 import { getOrCreateLedger, addLedgerTransaction } from '../services/transactionService';
 import { uploadDebtAttachment } from '../services/storage';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, formatAmountToWords } from '../utils/format';
 import { formatPhoneForDisplay, cleanPhone } from '../utils/phoneUtils';
 import type { User, Contact, Installment, Debt } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { useContactSync } from '../hooks/useContactSync';
 import { Toggle } from './Toggle';
+import { AmountInput } from './AmountInput';
 import { Timestamp } from 'firebase/firestore';
 import clsx from 'clsx';
-import { ContactModal } from './ContactModal';
 import { useModal } from '../context/ModalContext';
 
 interface CreateDebtModalProps {
@@ -83,7 +83,6 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
 
     // Flow State
     const [step, setStep] = useState<'SEARCH' | 'DETAILS'>('SEARCH');
-    const [isShadowUser, setIsShadowUser] = useState(false);
 
     // New Fields
     const [type, setType] = useState<'LENDING' | 'BORROWING'>('LENDING');
@@ -107,7 +106,6 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
 
     // Blocked check
     const [isTargetBlocked, setIsTargetBlocked] = useState(false);
-    const [showContactModal, setShowContactModal] = useState(false);
     const [isResolvingInitial, setIsResolvingInitial] = useState(false);
 
     // Special Debt Logic: If ANY complex field is used, it's a "File" (Debt), otherwise "Stream" (Transaction)
@@ -184,9 +182,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                 // Resolving User/Contact Object for display card?
                 // We have names, so we can set shadow user state or try to resolve.
                 // Let's assume shadow for speed unless targetUser prop was passed.
-                if (!targetUser) {
-                    setIsShadowUser(true);
-                }
+
 
                 if (isSpecialDebt || initialData.installments || initialData.dueDate) {
                      setShowDetails(true);
@@ -198,10 +194,10 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
             // CREATE MODE INITIALIZATION
             setPhoneNumber(initialPhone);
             setBorrowerName(derivedInitialName);
+            setShowDetails(false); // Hide details by default for a cleaner UI
 
             if (targetUser) {
                 setStep('DETAILS');
-                setIsShadowUser(false);
                 if ('uid' in targetUser) {
                     setFoundUser(targetUser as User);
                     setFoundContact(null);
@@ -209,19 +205,12 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                     setFoundContact(targetUser as Contact);
                     setFoundUser(null);
                 }
-            } else if (propInitialName && initialPhone) {
-                // Shadow/Optimistic User Case 
-                setStep('DETAILS');
-                setIsShadowUser(true);
-                setFoundContact(null);
-                setFoundUser(null);
             } else if (initialPhoneNumber && initialPhoneNumber.length > 20) {
                 // UID provided but no user object and NO name yet.
                 setIsResolvingInitial(true);
                 setStep('SEARCH');
             } else {
                 setStep('SEARCH');
-                setIsShadowUser(false);
             }
 
             if (user?.preferences?.defaultAllowPaymentAddition) {
@@ -250,7 +239,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
             setStep('SEARCH');
             setIsResolvingInitial(false);
         }
-    }, [isOpen, initialPhoneNumber, targetUser, user, propInitialName, editMode, initialData, derivedInitialName, initialPhone, isSpecialDebt]);
+    }, [isOpen, initialPhoneNumber, targetUser, user, propInitialName, editMode, initialData, derivedInitialName, initialPhone, isSpecialDebt, dueDate]);
 
     // Check blocked status whenever foundUser or foundContact changes
     useEffect(() => {
@@ -287,7 +276,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                         setPhoneNumber(userData.primaryPhoneNumber || userData.phoneNumbers?.[0] || userData.phoneNumber || '');
                         setBorrowerName(userData.displayName || '');
                         setStep('DETAILS');
-                        setIsShadowUser(false);
+                        setIsResolvingInitial(false);
                     }
                 } catch (e) {
                     console.error("Failed to fetch user by UID in Modal", e);
@@ -347,7 +336,6 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
         setSearchResults([]);
         setFoundUser(null);
         setStep('DETAILS');
-        setIsShadowUser(false);
     };
 
     const handleSelectUser = (sysUser: User) => {
@@ -357,23 +345,9 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
         setSearchResults([]);
         setFoundContact(null);
         setStep('DETAILS');
-        setIsShadowUser(false);
     };
 
-    const handleSelectNewNumber = (rawPhone: string) => {
-        setPhoneNumber(rawPhone);
-        setShowContactModal(true);
-    };
 
-    const handleContactCreated = (contact: Contact) => {
-        setFoundContact(contact);
-        setPhoneNumber(contact.phoneNumber);
-        setBorrowerName(contact.name);
-        setSearchResults([]);
-        setFoundUser(null);
-        setStep('DETAILS');
-        setIsShadowUser(false);
-    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -664,9 +638,9 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                             </div>
                         ) : step === 'DETAILS' ? (
                             <SelectedUserCard
-                                name={foundContact?.name || foundUser?.displayName || (isShadowUser ? borrowerName : '')}
+                                name={foundContact?.name || foundUser?.displayName || ''}
                                 phoneNumber={phoneNumber}
-                                status={foundUser ? 'system' : (foundContact ? 'contact' : 'none')}
+                                status={foundContact ? 'contact' : (foundUser ? 'system' : 'none')}
                                 uid={foundUser ? foundUser.uid : foundContact?.linkedUserId}
                                 onClear={editMode ? () => {} : () => { // Provide empty function for editMode
                                     setFoundContact(null);
@@ -674,7 +648,6 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                                     setPhoneNumber('');
                                     setBorrowerName('');
                                     setStep('SEARCH');
-                                    setIsShadowUser(false);
                                 }}
                             />
                         ) : (
@@ -700,65 +673,59 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                                 {/* Search Results Dropdown */}
                                 {(searchResults.length > 0 || foundUser || (phoneNumber.replace(/\D/g, '').length >= 3)) && (
                                     <div className="mt-2 bg-surface border border-border rounded-xl shadow-lg overflow-hidden max-h-60 overflow-y-auto absolute w-full z-20">
-                                        {/* Contacts */}
+                                        {/* Contacts (from Rehber) */}
                                         {searchResults.map(contact => (
                                             <div
                                                 key={contact.id}
                                                 onClick={() => handleSelectContact(contact)}
-                                                className="p-3 hover:bg-blue-50 dark:hover:bg-slate-800 cursor-pointer flex items-center gap-3 border-b border-gray-50 dark:border-slate-800 last:border-0"
+                                                className="p-3 hover:bg-orange-50 dark:hover:bg-orange-900/10 cursor-pointer flex items-center justify-between border-b border-gray-50 dark:border-slate-800 last:border-0 transition-colors group"
                                             >
-                                                <Avatar
-                                                    name={contact.name}
-                                                    size="sm"
-                                                    status={contact.linkedUserId ? 'system' : 'contact'}
-                                                    uid={contact.linkedUserId}
-                                                />
-                                                <div>
-                                                    <p className="text-sm font-semibold text-text-primary">{contact.name}</p>
-                                                    <p className="text-xs text-text-secondary">{contact.phoneNumber} (Rehber)</p>
+                                                <div className="flex items-center gap-3">
+                                                    <Avatar
+                                                        name={contact.name}
+                                                        size="sm"
+                                                        status="contact"
+                                                        uid={contact.linkedUserId}
+                                                    />
+                                                    <div>
+                                                        <p className="text-sm font-bold text-text-primary group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors">{contact.name}</p>
+                                                        <p className="text-[10px] text-orange-600 dark:text-orange-400 uppercase tracking-wider font-bold">Rehberimde</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-xs text-text-secondary">{formatPhoneForDisplay(contact.phoneNumber)}</p>
                                                 </div>
                                             </div>
                                         ))}
 
-                                        {/* System User Match */}
+                                        {/* System User Match (Not in Rehber) */}
                                         {foundUser && !searchResults.some(c => c.phoneNumber === (foundUser as User).phoneNumber) && (
                                             <div
                                                 onClick={() => handleSelectUser(foundUser as User)}
-                                                className="p-3 hover:bg-green-50 dark:hover:bg-green-900/20 cursor-pointer flex items-center gap-3 border-t border-gray-100 dark:border-slate-800"
+                                                className="p-3 hover:bg-blue-50 dark:hover:bg-blue-900/10 cursor-pointer flex items-center justify-between border-t border-gray-100 dark:border-slate-800 transition-colors group"
                                             >
-                                                <Avatar
-                                                    name={(foundUser as User).displayName || ''}
-                                                    photoURL={(foundUser as User).photoURL || undefined}
-                                                    size="sm"
-                                                    status="system"
-                                                />
-                                                <div>
-                                                    <p className="text-sm font-semibold text-text-primary">{(foundUser as User).displayName}</p>
-                                                    <p className="text-xs text-green-600 dark:text-green-400">Sistem Kullanıcısı</p>
+                                                <div className="flex items-center gap-3">
+                                                    <Avatar
+                                                        name={(foundUser as User).displayName || ''}
+                                                        photoURL={(foundUser as User).photoURL || undefined}
+                                                        size="sm"
+                                                        status="system"
+                                                    />
+                                                    <div>
+                                                        <p className="text-sm font-bold text-text-primary group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{(foundUser as User).displayName}</p>
+                                                        <p className="text-[10px] text-blue-600 dark:text-blue-400 uppercase tracking-wider font-bold">DebtDert Kullanıcısı</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-xs text-text-secondary">{formatPhoneForDisplay((foundUser as User).primaryPhoneNumber || (foundUser as User).phoneNumber || '')}</p>
                                                 </div>
                                             </div>
                                         )}
 
-                                        {/* Create New Entry Row */}
-                                        {phoneNumber.replace(/\D/g, '').length >= 10 && !foundUser && !searchResults.some(c => c.phoneNumber.includes(phoneNumber.replace(/\D/g, ''))) && (
-                                            <div
-                                                onClick={() => handleSelectNewNumber(phoneNumber)}
-                                                className="p-3 hover:bg-blue-50 dark:hover:bg-slate-800 cursor-pointer flex items-center gap-3 border-t border-gray-100 dark:border-slate-800"
-                                            >
-                                                <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-text-secondary">
-                                                    <Plus size={16} /> {/* Need to import Plus */}
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm font-semibold text-text-primary">Yeni Kişi Oluştur</p>
-                                                    <p className="text-xs text-text-secondary">{formatPhoneForDisplay(phoneNumber)}</p>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Empty State */}
-                                        {searchResults.length === 0 && !foundUser && phoneNumber.length > 0 && phoneNumber.replace(/\D/g, '').length < 10 && (
+                                        {/* No dynamic creation anymore */}
+                                        {searchResults.length === 0 && !foundUser && phoneNumber.length > 0 && (
                                             <div className="p-4 text-center text-text-secondary text-sm">
-                                                Sonuç bulunamadı. Yeni numara için en az 10 hane girin.
+                                                Sonuç bulunamadı. Lütfen rehberinize ekleyin veya geçerli bir numara/isim girin.
                                             </div>
                                         )}
                                     </div>
@@ -767,34 +734,36 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                         )}
 
 
-                        <div className="flex gap-3">
-                            <div className="flex-1">
-                                <label className="block text-sm font-medium text-text-secondary mb-1">Tutar</label>
-                                <input
-                                    type="number"
-                                    value={amount}
-                                    onChange={(e) => setAmount(e.target.value)}
-                                    min={0}
-                                    step="0.01"
-                                    disabled={isTargetBlocked}
-                                    className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all text-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                                    placeholder="0.00"
-                                    required
-                                />
+                        <div className="space-y-1">
+                            <div className="flex items-start gap-3">
+                                <div className="flex-1">
+                                    <AmountInput
+                                        label="Tutar"
+                                        value={amount}
+                                        onChange={setAmount}
+                                        disabled={isTargetBlocked}
+                                        required
+                                    />
+                                </div>
+                                <div className="w-24">
+                                    <label className="block text-sm font-medium text-text-secondary mb-1">Döviz</label>
+                                    <select
+                                        value={currency}
+                                        onChange={(e) => setCurrency(e.target.value)}
+                                        disabled={isTargetBlocked}
+                                        className="w-full px-3 py-2.5 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all font-bold text-base disabled:opacity-50 disabled:cursor-not-allowed h-[46px]"
+                                    >
+                                        <option value="TRY">₺</option>
+                                        <option value="USD">$</option>
+                                        <option value="EUR">€</option>
+                                    </select>
+                                </div>
                             </div>
-                            <div className="w-24">
-                                <label className="block text-sm font-medium text-text-secondary mb-1">Para Birimi</label>
-                                <select
-                                    value={currency}
-                                    onChange={(e) => setCurrency(e.target.value)}
-                                    disabled={isTargetBlocked}
-                                    className="w-full px-3 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    <option value="TRY">₺</option>
-                                    <option value="USD">$</option>
-                                    <option value="EUR">€</option>
-                                </select>
-                            </div>
+                            {amount && (
+                                <p className="text-[10px] text-text-secondary italic text-left animate-in fade-in slide-in-from-top-1 px-1 mt-0.5">
+                                    {formatAmountToWords(amount, currency)}
+                                </p>
+                            )}
                         </div>
 
                         {/* Custom Rate Input */}
@@ -933,18 +902,12 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                                         {isInstallment && (
                                             <div className="mt-4 space-y-3 animate-in fade-in slide-in-from-top-1 border-t border-slate-200 dark:border-slate-700 pt-3">
                                                 {/* Down Payment */}
-                                                <div>
-                                                    <label className="block text-xs font-medium text-text-secondary mb-1">Peşinat (Opsiyonel)</label>
-                                                    <input
-                                                        type="number"
-                                                        value={downPayment}
-                                                        onChange={(e) => setDownPayment(e.target.value)}
-                                                        min={0}
-                                                        max={parseFloat(amount) || 0}
-                                                        className="w-full px-3 py-2 rounded-lg border border-slate-600 bg-surface/50 text-text-primary text-sm focus:border-primary outline-none"
-                                                        placeholder="0.00"
-                                                    />
-                                                </div>
+                                                <AmountInput
+                                                    label="Peşinat (Opsiyonel)"
+                                                    value={downPayment}
+                                                    onChange={setDownPayment}
+                                                    className="!py-2 !text-sm"
+                                                />
 
                                                 <div className="flex gap-3">
                                                     <div className="flex-1">
@@ -1023,13 +986,6 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                 </div>
             </div >
 
-            <ContactModal
-                isOpen={showContactModal}
-                onClose={() => setShowContactModal(false)}
-                initialPhone={phoneNumber}
-                onSuccess={handleContactCreated}
-                checkDuplicates={false}
-            />
         </div >
     );
 };

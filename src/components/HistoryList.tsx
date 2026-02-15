@@ -11,15 +11,17 @@ import { AdaptiveActionRow } from './AdaptiveActionRow';
 import { type SwipeAction } from './SwipeableItem';
 
 import { useModal } from '../context/ModalContext';
+import { Avatar } from './Avatar';
 
 interface HistoryListProps {
     logs: PaymentLog[];
     currency: string;
     isLender: boolean;
     debtId: string;
+    otherPartyId?: string;
 }
 
-export const HistoryList: React.FC<HistoryListProps> = ({ logs, currency, isLender, debtId }) => {
+export const HistoryList: React.FC<HistoryListProps> = ({ logs, currency, isLender, debtId, otherPartyId }) => {
     const { showAlert, showConfirm } = useModal();
     const { user } = useAuth();
     const [openRowId, setOpenRowId] = useState<string | null>(null);
@@ -84,65 +86,75 @@ export const HistoryList: React.FC<HistoryListProps> = ({ logs, currency, isLend
                     }
 
                     return (
-                        <AdaptiveActionRow
-                            key={log.id}
-                            rightActions={rightActions}
-                            isOpen={openRowId === `${log.id}_right` ? 'right' : null}
-                            onOpen={(dir) => setOpenRowId(`${log.id}_${dir}`)}
-                            onClose={() => setOpenRowId(null)}
-                            className="mb-3"
-                            contentClassName="bg-background" // Match page bg
-                        >
-                            <div className={clsx(
-                                "p-3 rounded-lg border relative shadow-sm w-[90%] md:w-[85%]", // Width constraint
-                                isMine ? "ml-auto bg-green-50/50 border-green-200" : "mr-auto bg-white border-slate-200", // Alignment & Color
-                                log.status === 'REJECTED' && "bg-red-50 border-red-200 opacity-75" // Rejected override
-                            )}>
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-3">
-                                        <div className={clsx(
-                                            "p-2 rounded-full shadow-sm",
-                                            log.type === 'PAYMENT' ? "bg-green-100 text-green-600" :
-                                                log.type === 'PAYMENT_DECLARATION' ? "bg-green-100 text-green-600" : "bg-white text-blue-600" // Unified color for payment
-                                        )}>
-                                            <Wallet size={16} />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-medium text-gray-900">
-                                                {log.type === 'INITIAL_CREATION' ? 'Borç Oluşturuldu' :
-                                                    (log.type === 'PAYMENT' || log.type === 'PAYMENT_DECLARATION') ? 'Ödeme' : 'Not Eklendi'}
-                                            </p>
-                                            <p className="text-xs text-gray-500">
-                                                {log.timestamp ? format(log.timestamp.toDate(), 'd MMM HH:mm', { locale: tr }) : ''}
-                                            </p>
-                                        </div>
-                                    </div>
+                        <div key={log.id} className={clsx(
+                            "flex items-center gap-2",
+                            isMine ? "flex-row-reverse" : "flex-row"
+                        )}>
+                            {/* Avatar */}
+                            <Avatar
+                                uid={isMine ? user?.uid : otherPartyId}
+                                size="sm"
+                                className="w-5 h-5 flex-shrink-0"
+                                status={!isMine && otherPartyId && otherPartyId.length > 20 ? 'system' : 'none'}
+                            />
 
-                                    {/* Right Side: Amount */}
-                                    <div className="flex items-center gap-2">
-                                        {log.amountPaid && (
-                                            <p className={clsx(
-                                                "font-semibold",
-                                                log.status === 'REJECTED' ? "text-gray-400 line-through" : "text-green-600"
+                            <AdaptiveActionRow
+                                rightActions={rightActions}
+                                isOpen={openRowId === `${log.id}_right` ? 'right' : null}
+                                onOpen={(dir) => setOpenRowId(`${log.id}_${dir}`)}
+                                onClose={() => setOpenRowId(null)}
+                                className="flex-1"
+                                contentClassName="bg-background"
+                            >
+                                <div className={clsx(
+                                    "p-3 rounded-lg border relative shadow-sm max-w-[70%] sm:max-w-[50%]",
+                                    isMine ? "ml-auto bg-green-50/50 border-green-200" : "mr-auto bg-white border-slate-200",
+                                    log.status === 'REJECTED' && "bg-red-50 border-red-200 opacity-75"
+                                )}>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-3">
+                                            <div className={clsx(
+                                                "p-2 rounded-full shadow-sm",
+                                                log.type === 'PAYMENT' ? "bg-green-100 text-green-600" :
+                                                    log.type === 'PAYMENT_DECLARATION' ? "bg-green-100 text-green-600" : "bg-white text-blue-600"
                                             )}>
-                                                +{formatCurrency(log.amountPaid, currency)}
-                                            </p>
-                                        )}
+                                                <Wallet size={16} />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-gray-900">
+                                                    {log.type === 'INITIAL_CREATION' ? 'Borç Oluşturuldu' :
+                                                        (log.type === 'PAYMENT' || log.type === 'PAYMENT_DECLARATION') ? 'Ödeme' : 'Not Eklendi'}
+                                                </p>
+                                                <p className="text-xs text-gray-500">
+                                                    {log.timestamp ? format(log.timestamp.toDate(), 'd MMM HH:mm', { locale: tr }) : ''}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            {log.amountPaid && (
+                                                <p className={clsx(
+                                                    "font-semibold",
+                                                    log.status === 'REJECTED' ? "text-gray-400 line-through" : "text-green-600"
+                                                )}>
+                                                    +{formatCurrency(log.amountPaid, currency)}
+                                                </p>
+                                            )}
+                                        </div>
                                     </div>
+
+                                    {log.note && (
+                                        <p className="text-xs text-gray-500 mb-2 pl-11">{log.note}</p>
+                                    )}
+
+                                    {log.status === 'REJECTED' && (
+                                        <div className="pl-11 mt-1 text-xs text-red-500 font-medium flex items-center gap-1">
+                                            <X size={14} /> Reddedildi
+                                        </div>
+                                    )}
                                 </div>
-
-                                {log.note && (
-                                    <p className="text-xs text-gray-500 mb-2 pl-11">{log.note}</p>
-                                )}
-
-                                {/* Status Indicator (Only if Rejected) - Button removed */}
-                                {log.status === 'REJECTED' && (
-                                    <div className="pl-11 mt-1 text-xs text-red-500 font-medium flex items-center gap-1">
-                                        <X size={14} /> Reddedildi
-                                    </div>
-                                )}
-                            </div>
-                        </AdaptiveActionRow>
+                            </AdaptiveActionRow>
+                        </div>
                     );
                 })}
             </div>

@@ -3,24 +3,22 @@
  * Accessed by clicking header in PersonStream
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useDebts } from '../hooks/useDebts';
 import { useContactName } from '../hooks/useContactName';
-import { ArrowLeft, Phone, MessageCircle, Edit2, MoreVertical, Ban, UserPlus, VolumeX, Volume2, FolderOpen, ExternalLink } from 'lucide-react';
-import { searchUserByPhone, getContacts, updateContact, addContact, deleteContact, muteUser, unmuteUser, createDebt } from '../services/db';
+import { ArrowLeft, Phone, MessageCircle, Edit2, MoreVertical, Ban, VolumeX, Volume2, ExternalLink } from 'lucide-react';
+import { searchUserByPhone, getContacts, updateContact, muteUser, unmuteUser, createDebt } from '../services/db';
 import { blockUser, isUserBlocked, unblockUser } from '../services/blockService';
 import { Avatar } from '../components/Avatar';
-import { DebtCard } from '../components/DebtCard';
 import { UserBalanceHeader } from '../components/UserBalanceHeader';
 import { CreateDebtModal } from '../components/CreateDebtModal';
+import { ContactModal } from '../components/ContactModal';
 import { PhoneInput } from '../components/PhoneInput';
 import { formatPhoneForDisplay as formatPhoneNumber, cleanPhone as cleanPhoneNumber } from '../utils/phoneUtils';
-import { convertToTRY, fetchRates, type CurrencyRates } from '../services/currency';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import clsx from 'clsx';
 import { useModal } from '../context/ModalContext';
 import type { User, Contact } from '../types';
 import { useLedger } from '../hooks/useLedger';
@@ -33,7 +31,6 @@ export const PersonProfile = () => {
     const { allDebts: debts } = useDebts();
     const { resolveName } = useContactName();
     const { showAlert, showConfirm } = useModal();
-    const [rates, setRates] = useState<CurrencyRates | null>(null);
 
     // State
     const [targetUserObject, setTargetUserObject] = useState<User | Contact | null>(null);
@@ -45,24 +42,17 @@ export const PersonProfile = () => {
     const [showCreateDebtModal, setShowCreateDebtModal] = useState(false);
     const [editName, setEditName] = useState('');
     const [editPhone, setEditPhone] = useState('');
-    const [submittingEdit, setSubmittingEdit] = useState(false);
     const [resolvedUid, setResolvedUid] = useState<string | null>(null);
-    const [lastReadTimestamp, setLastReadTimestamp] = useState<number | null>(null);
-
-    // Fetch rates
-    useEffect(() => {
-        fetchRates().then(setRates);
-    }, []);
 
     // Get target UID
-    const getTargetUid = () => {
+    const getTargetUid = useCallback(() => {
         if (id && id.length > 20) return id;
         if (targetUserObject) {
             if ('uid' in targetUserObject) return targetUserObject.uid;
             if ('linkedUserId' in targetUserObject && targetUserObject.linkedUserId) return targetUserObject.linkedUserId;
         }
         return null;
-    };
+    }, [id, targetUserObject]);
 
     // Fetch user/contact info
     useEffect(() => {
@@ -93,7 +83,6 @@ export const PersonProfile = () => {
                 setContactId(contact.id);
                 setEditName(contact.name);
                 setEditPhone(contact.phoneNumber);
-                setLastReadTimestamp(contact.lastReadAt?.toMillis() || null);
                 if (!targetUserObject) setTargetUserObject(contact);
             }
 
@@ -109,7 +98,7 @@ export const PersonProfile = () => {
         };
 
         fetchTarget();
-    }, [user, id]);
+    }, [user, id, getTargetUid, targetUserObject]);
 
     // Person info
     const personInfo = useMemo(() => {
@@ -124,13 +113,13 @@ export const PersonProfile = () => {
             else if ('phoneNumber' in targetUserObject) phone = targetUserObject.phoneNumber || phone;
         }
 
-        const { displayName } = resolveName(id || '', name);
-        return { name: displayName, phone };
+        const { displayName, status } = resolveName(id || '', name, phone);
+        return { name: displayName, phone, status };
     }, [id, targetUserObject, resolveName, location.state]);
 
     // Ledger for balance
     const otherPartyId = getTargetUid() || id;
-    const { transactions, balance: cariBalance } = useLedger(
+    const { transactions } = useLedger(
         user?.uid,
         user?.displayName,
         otherPartyId || undefined,
@@ -286,6 +275,7 @@ export const PersonProfile = () => {
                         photoURL={targetUserObject && 'photoURL' in targetUserObject ? targetUserObject.photoURL : undefined}
                         size="xl"
                         className="mx-auto mb-4"
+                        status={personInfo.status}
                     />
                     <h2 className="text-2xl font-bold text-text-primary">{personInfo.name}</h2>
                     {personInfo.phone && (
@@ -363,58 +353,18 @@ export const PersonProfile = () => {
             />
 
             {/* Edit Modal */}
-            {showEditModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-surface rounded-2xl w-full max-w-sm p-6 shadow-xl border border-slate-700">
-                        <h2 className="text-xl font-bold text-text-primary mb-4">Kişiyi Düzenle</h2>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary mb-1">İsim</label>
-                                <input
-                                    type="text"
-                                    value={editName}
-                                    onChange={(e) => setEditName(e.target.value)}
-                                    className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-text-secondary mb-1">Telefon</label>
-                                <PhoneInput
-                                    value={editPhone}
-                                    onChange={setEditPhone}
-                                />
-                            </div>
-                        </div>
-                        <div className="flex gap-3 mt-6">
-                            <button
-                                onClick={() => setShowEditModal(false)}
-                                className="flex-1 py-3 rounded-xl border border-slate-700 text-text-secondary"
-                            >
-                                İptal
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    if (!user || !contactId) return;
-                                    setSubmittingEdit(true);
-                                    try {
-                                        await updateContact(user.uid, contactId, { name: editName, phoneNumber: editPhone });
-                                        showAlert("Başarılı", "Kişi güncellendi.", "success");
-                                        setShowEditModal(false);
-                                    } catch {
-                                        showAlert("Hata", "Güncelleme başarısız.", "error");
-                                    } finally {
-                                        setSubmittingEdit(false);
-                                    }
-                                }}
-                                disabled={submittingEdit}
-                                className="flex-1 py-3 rounded-xl bg-purple-600 text-white font-semibold"
-                            >
-                                {submittingEdit ? 'Kaydediliyor...' : 'Kaydet'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ContactModal
+                isOpen={showEditModal}
+                onClose={() => setShowEditModal(false)}
+                contactToEdit={targetUserObject && !('uid' in targetUserObject) ? (targetUserObject as Contact) : null}
+                initialName={editName}
+                initialPhone={editPhone}
+                onSuccess={() => {
+                    // Refresh data
+                    window.location.reload();
+                }}
+                checkDuplicates={false}
+            />
         </div>
     );
 };

@@ -10,6 +10,8 @@ import { db, auth } from '../services/firebase';
 import type { User } from '../types';
 import { FaTrash, FaPlus, FaTimes } from 'react-icons/fa';
 import { RecaptchaVerifier } from 'firebase/auth';
+import { PhoneInput } from './PhoneInput';
+import { isValidPhone } from '../utils/phoneUtils';
 
 interface Props {
     user?: User | null;
@@ -58,12 +60,13 @@ const ManagePhones: React.FC<Props> = ({ user: propUser }) => {
         setError(null);
         setSuccessMsg(null);
 
-        // Basic Validation
-        const cleaned = newPhone.replace(/\s/g, '');
-        if (cleaned.length < 10) {
-            setError("Geçerli bir telefon numarası giriniz.");
+        // Strict E.164 Validation
+        if (!isValidPhone(newPhone)) {
+            setError("Geçerli bir uluslararası telefon numarası (+ÜlkeKoduNumara) giriniz.");
             return;
         }
+
+        const cleaned = newPhone; // Use as is, PhoneInput ensures E.164
 
         if (!recaptchaVerifier.current) {
              setError("Recaptcha yüklenemedi. Sayfayı yenileyiniz.");
@@ -76,8 +79,9 @@ const ManagePhones: React.FC<Props> = ({ user: propUser }) => {
             setVerificationId(confirmationResult.verificationId);
             setStep('VERIFY');
             setSuccessMsg("Doğrulama kodu gönderildi.");
-        } catch (err: any) {
-            setError(err.message || "Kod gönderilemedi.");
+        } catch (err: unknown) {
+            const error = err as Error;
+            setError(error.message || "Kod gönderilemedi.");
         } finally {
             setLoading(false);
         }
@@ -97,8 +101,9 @@ const ManagePhones: React.FC<Props> = ({ user: propUser }) => {
             await linkSecondaryPhone(newPhone, verificationCode, verificationId);
             setSuccessMsg("Numara başarıyla eklendi!");
             resetForm();
-        } catch (err: any) {
-            setError(err.message || "Doğrulama başarısız.");
+        } catch (err: unknown) {
+            const error = err as Error;
+            setError(error.message || "Doğrulama başarısız.");
         } finally {
             setLoading(false);
         }
@@ -109,8 +114,9 @@ const ManagePhones: React.FC<Props> = ({ user: propUser }) => {
 
         try {
             await removePhone(phone);
-        } catch (err: any) {
-            alert(err.message);
+        } catch (err: unknown) {
+            const error = err as Error;
+            alert(error.message);
         }
     };
 
@@ -177,13 +183,12 @@ const ManagePhones: React.FC<Props> = ({ user: propUser }) => {
                     {step === 'INPUT' ? (
                         <div className="space-y-3">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Telefon Numarası</label>
-                                <input
-                                    type="tel"
-                                    placeholder="+90555..."
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Telefon Numarası</label>
+                                <PhoneInput
                                     value={newPhone}
-                                    onChange={(e) => setNewPhone(e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm py-2 px-3 dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                                    onChange={setNewPhone}
+                                    required
+                                    placeholder="555 123 45 67"
                                 />
                             </div>
                             <button

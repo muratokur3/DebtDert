@@ -7,14 +7,11 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { usePersonDebts } from '../hooks/usePersonDebts';
-import { usePersonBalance } from '../hooks/usePersonBalance';
 import { useContactName } from '../hooks/useContactName';
 import { useLedger } from '../hooks/useLedger';
 import { ArrowLeft, MoreVertical, Edit2, UserPlus, Volume2, VolumeX, Ban, Trash2 } from 'lucide-react';
 import { Avatar } from '../components/Avatar';
 import clsx from 'clsx';
-import { BalanceCard } from '../components/BalanceCard';
-import { TabBar, type Tab } from '../components/TabBar';
 import { SummaryCard } from '../components/SummaryCard';
 import { TransactionList } from '../components/TransactionList';
 import { calculateStreamBalance, calculateDebtsBalance, mergeBalances, type DetailedBalances } from '../utils/balanceAggregator';
@@ -22,8 +19,9 @@ import { fetchRates, convertToTRY, type CurrencyRates } from '../services/curren
 import { DebtsTab } from '../components/DebtsTab';
 import { DateFilterDropdown, type QuickFilterType } from '../components/DateFilterDropdown';
 import { CreateDebtModal } from '../components/CreateDebtModal';
+import { ContactModal } from '../components/ContactModal';
 import { useModal } from '../context/ModalContext';
-import { getContacts, markContactAsRead, addContact, updateContact, deleteContact, muteUser, unmuteUser, deletePersonHistory } from '../services/db';
+import { getContacts, markContactAsRead, deleteContact, muteUser, unmuteUser, deletePersonHistory } from '../services/db';
 import { isUserBlocked, blockUser, unblockUser } from '../services/blockService';
 import { cleanPhone, formatPhoneForDisplay } from '../utils/phoneUtils';
 import { doc, getDoc } from 'firebase/firestore';
@@ -66,7 +64,6 @@ export const PersonStream = () => {
     const [showEditModal, setShowEditModal] = useState(false);
     const [editName, setEditName] = useState('');
     const [editPhone, setEditPhone] = useState('');
-    const [submittingEdit, setSubmittingEdit] = useState(false);
     const isFirstLoadRef = useRef(true);
     const lastUpdateSourceRef = useRef<'SCROLL' | 'CLICK' | null>(null);
     const tabModeRef = useRef(tabMode);
@@ -158,7 +155,6 @@ export const PersonStream = () => {
         return () => window.removeEventListener('trigger-person-fab-action', handleFabTrigger);
     }, [isBlocked]);
 
-    // Person info
     const personInfo = useMemo(() => {
         let name = '';
         let phone = id && id.length > 20 ? '' : cleanPhone(id || '');
@@ -170,16 +166,21 @@ export const PersonStream = () => {
             else if ('phoneNumber' in targetUserObject) phone = targetUserObject.phoneNumber || phone;
         }
 
-        const { displayName } = resolveName(id || '', name);
-        return { name: displayName, phone };
+        const { displayName, status } = resolveName(id || '', name, phone);
+        return { name: displayName, phone, status };
     }, [id, targetUserObject, resolveName]);
 
     // Custom hooks for data
-    const { allDebts, activeDebts, historyDebts, activeCount } = usePersonDebts(id || '', resolvedUid);
-    const balance = usePersonBalance(id || '', personInfo.name, allDebts);
+    const { allDebts } = usePersonDebts(id || '', resolvedUid);
 
     // useLedger for LEDGER tab
-    const { transactions, ledgerId } = useLedger(
+    const { 
+        transactions, 
+        ledgerId, 
+        loadMore, 
+        hasMore, 
+        loadingMore 
+    } = useLedger(
         user?.uid,
         user?.displayName,
         id || undefined,
@@ -187,7 +188,6 @@ export const PersonStream = () => {
     );
 
     const [rates, setRates] = useState<CurrencyRates | null>(null);
-    const [toggledCards, setToggledCards] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         fetchRates().then(setRates);
@@ -289,16 +289,19 @@ export const PersonStream = () => {
         if (!el) return;
 
         const observer = new IntersectionObserver((entries) => {
-            // When user IS scrolling manually, we want to update the tabMode
-            if (isScrollingRef.current) return;
+            // Find the entry that is currently most visible (most centered)
+            // We look at all entries and pick the one with the highest intersectionRatio
+            
+            let mostCenteredEntry = entries[0];
+            for (const entry of entries) {
+                if (entry.intersectionRatio > mostCenteredEntry.intersectionRatio) {
+                    mostCenteredEntry = entry;
+                }
+            }
 
-            // Find the entry that has the largest intersection ratio (most centered)
-            const mostVisible = entries.reduce((prev, curr) => 
-                (curr.intersectionRatio > prev.intersectionRatio) ? curr : prev
-            );
-
-            if (mostVisible.isIntersecting && mostVisible.intersectionRatio > 0.5) {
-                const mode = mostVisible.target.getAttribute('data-mode') as TabMode;
+            // If the user is manually scrolling (not a programmatic scrollTo), update tabMode
+            if (!isScrollingRef.current && mostCenteredEntry.isIntersecting && mostCenteredEntry.intersectionRatio > 0.5) {
+                const mode = mostCenteredEntry.target.getAttribute('data-mode') as TabMode;
                 if (mode && mode !== tabModeRef.current) {
                     lastUpdateSourceRef.current = 'SCROLL';
                     setTabMode(mode);
@@ -306,8 +309,8 @@ export const PersonStream = () => {
             }
         }, {
             root: el,
-            threshold: [0, 0.25, 0.5, 0.75, 1.0],
-            rootMargin: '0px -25% 0px -25%' // Focus on center 50% of the container
+            threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+            rootMargin: '0px' // Allow full detection across the container
         });
 
         const cards = el.querySelectorAll('[data-mode]');
@@ -355,11 +358,7 @@ export const PersonStream = () => {
 
 
     // Tab configuration
-    const tabs: Tab[] = [
-        { id: 'TOTAL', label: 'Özet' },
-        { id: 'LEDGER', label: 'Borçlar' },
-        { id: 'INSTALLMENT', label: 'Vadeli' }
-    ];
+
 
     // Handlers
     const handleBlockToggle = async () => {
@@ -427,26 +426,6 @@ export const PersonStream = () => {
         setShowEditModal(true);
     };
 
-    const handleEditSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!user) return;
-        setSubmittingEdit(true);
-        try {
-            if (contactId) {
-                await updateContact(user.uid, contactId, { name: editName, phoneNumber: editPhone });
-            } else {
-                await addContact(user.uid, editName, editPhone);
-            }
-            setShowEditModal(false);
-            window.location.reload();
-        } catch (error) {
-            console.error(error);
-            showAlert("Hata", "İşlem başarısız.", "error");
-        } finally {
-            setSubmittingEdit(false);
-        }
-    };
-
     if (!user) {
         return (
             <div className="min-h-screen flex items-center justify-center">
@@ -467,6 +446,7 @@ export const PersonStream = () => {
                     name={personInfo.name} 
                     size="md" 
                     photoURL={targetUserObject && 'photoURL' in targetUserObject ? targetUserObject.photoURL : undefined} 
+                    status={personInfo.status}
                 />
 
                 <div className="flex-1 min-w-0 text-center">
@@ -623,7 +603,7 @@ export const PersonStream = () => {
                     {tabMode === 'TOTAL' && (
                         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
                              <div className="grid gap-3">
-                                {Array.from(totalBalance.entries()).sort((a,b) => a[0] === 'TRY' ? -1 : 1).map(([curr, bal]) => (
+                                {Array.from(totalBalance.entries()).sort((a) => a[0] === 'TRY' ? -1 : 1).map(([curr, bal]) => (
                                     <div key={curr} className="flex justify-between items-center p-4 bg-surface rounded-xl border border-border shadow-sm">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary">
@@ -656,7 +636,13 @@ export const PersonStream = () => {
                                 <DateFilterDropdown onFilterChange={handleLedgerDateChange} />
                             </div>
 
-                            <TransactionList ledgerId={ledgerId || ''} transactions={filteredTransactions} />
+                            <TransactionList 
+                                ledgerId={ledgerId || ''} 
+                                transactions={filteredTransactions} 
+                                onLoadMore={loadMore}
+                                hasMore={hasMore}
+                                loadingMore={loadingMore}
+                            />
                         </div>
                     )}
                     {tabMode === 'INSTALLMENT' && (
@@ -671,51 +657,22 @@ export const PersonStream = () => {
             <CreateDebtModal
                 isOpen={showCreateDebtModal}
                 onClose={() => setShowCreateDebtModal(false)}
+                targetUser={targetUserObject}
+                initialName={personInfo.name}
+                initialPhoneNumber={personInfo.phone}
             />
 
-            {/* Edit Contact Modal */}
-            {showEditModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="bg-surface rounded-2xl p-6 max-w-md w-full mx-4">
-                        <h2 className="text-xl font-bold mb-4">{contactId ? 'Kişiyi Düzenle' : 'Rehbere Ekle'}</h2>
-                        <form onSubmit={handleEditSubmit} className="space-y-4">
-                            <input
-                                type="text"
-                                placeholder="Ad Soyad"
-                                value={editName}
-                                onChange={(e) => setEditName(e.target.value)}
-                                className="w-full px-4 py-2 border border-border rounded-lg"
-                                required
-                            />
-                            <input
-                                type="tel"
-                                placeholder="Telefon"
-                                value={editPhone}
-                                onChange={(e) => setEditPhone(e.target.value)}
-                                className="w-full px-4 py-2 border border-border rounded-lg disabled:opacity-50 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:cursor-not-allowed"
-                                required
-                                disabled={!contactId}
-                            />
-                            <div className="flex gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowEditModal(false)}
-                                    className="flex-1 px-4 py-2 border border-border rounded-lg"
-                                >
-                                    İptal
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={submittingEdit}
-                                    className="flex-1 px-4 py-2 bg-primary text-white rounded-lg"
-                                >
-                                    {submittingEdit ? 'Kaydediliyor...' : 'Kaydet'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
+                <ContactModal
+                    isOpen={showEditModal}
+                    onClose={() => setShowEditModal(false)}
+                    contactToEdit={targetUserObject && !('uid' in targetUserObject) ? (targetUserObject as Contact) : null}
+                    initialName={editName}
+                    initialPhone={editPhone}
+                    onSuccess={() => {
+                        window.location.reload();
+                    }}
+                    checkDuplicates={!contactId} // Only check duplicates if creating new (though here we mostly edit)
+                />
         </div>
     );
 };

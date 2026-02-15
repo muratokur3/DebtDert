@@ -110,6 +110,7 @@ export interface Debt {
     note?: string;
     participants: string[];
     createdAt: Timestamp;
+    updatedAt?: Timestamp;
     createdBy: string;
     installments?: Installment[];
     // [REMOVED] isDeleted, deletedAt

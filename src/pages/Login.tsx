@@ -24,7 +24,6 @@ export const Login = () => {
     const [smsStep, setSmsStep] = useState<'REQUEST' | 'VERIFY'>('REQUEST');
     const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
     const recaptchaVerifier = useRef<RecaptchaVerifier | null>(null);
-    const attemptRef = useRef(false);
 
     useEffect(() => {
         // Initialize Recaptcha for SMS login
@@ -52,7 +51,8 @@ export const Login = () => {
             // Use password login (pseudo-email) flow
             await loginWithPhoneAndPassword(phone, password);
             navigate('/');
-        } catch (error: any) {
+        } catch (err: unknown) {
+            const error = err as Error;
             showAlert('Giriş Başarısız', error.message || 'Bilinmeyen hata', 'error');
         } finally {
             setLoading(false);
@@ -66,7 +66,8 @@ export const Login = () => {
             const result = await startPhoneLogin(phone, recaptchaVerifier.current!);
             setConfirmationResult(result);
             setSmsStep('VERIFY');
-        } catch (error: any) {
+        } catch (err: unknown) {
+            const error = err as Error;
             showAlert('SMS Gönderilemedi', error.message || 'Bilinmeyen hata', 'error');
         } finally {
             setLoading(false);
@@ -81,7 +82,8 @@ export const Login = () => {
             const result = await confirmationResult.confirm(otp);
             await ensureUserDocument(result.user);
             navigate('/');
-        } catch (error: any) {
+        } catch (err: unknown) {
+            const error = err as Error;
             showAlert('Doğrula ve Giriş Başarısız', error.message || 'Bilinmeyen hata', 'error');
         } finally {
             setLoading(false);

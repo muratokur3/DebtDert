@@ -21,11 +21,15 @@ import {
     getDocs,
     updateDoc,
     getDoc,
-    limit
+    limit,
+    startAfter,
+    QueryDocumentSnapshot
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Transaction, TransactionDirection, Debt } from '../types';
 import { isTransactionEditable } from './db';
+
+import { cleanPhone as cleanPhoneNumber } from '../utils/phoneUtils';
 
 // ============= LEDGER DOCUMENT OPERATIONS =============
 
@@ -39,6 +43,12 @@ export const getOrCreateLedger = async (
     otherPartyId: string,
     otherPartyName: string
 ): Promise<string> => {
+    // 1. Harmonize ID: If it's a phone number, normalize it immediately
+    let normalizedOtherId = otherPartyId;
+    if (otherPartyId.length < 20) {
+        normalizedOtherId = cleanPhoneNumber(otherPartyId);
+    }
+
     // First, try to find an existing active LEDGER
     const debtsRef = collection(db, 'debts');
     
@@ -55,7 +65,7 @@ export const getOrCreateLedger = async (
     // Check if any of the results include the other party
     for (const docSnap of snapshot.docs) {
         const data = docSnap.data() as Debt;
-        if (data.participants.includes(otherPartyId)) {
+        if (data.participants.includes(normalizedOtherId)) {
             return docSnap.id; // Found existing ledger
         }
     }
@@ -64,13 +74,13 @@ export const getOrCreateLedger = async (
     const newLedger: Omit<Debt, 'id'> = {
         lenderId: currentUserId, // Arbitrary, both have equal rights
         lenderName: currentUserName,
-        borrowerId: otherPartyId,
+        borrowerId: normalizedOtherId,
         borrowerName: otherPartyName,
         originalAmount: 0, // Ledger starts at 0
         remainingAmount: 0,
         currency: 'TRY',
         status: 'ACTIVE',
-        participants: [currentUserId, otherPartyId],
+        participants: [currentUserId, normalizedOtherId],
         createdAt: serverTimestamp() as Timestamp,
         createdBy: currentUserId,
         type: 'LEDGER',
@@ -186,15 +196,16 @@ export const addLedgerTransaction = async (
 };
 
 /**
- * Subscribe to transactions for a ledger
+ * Subscribe to transactions for a ledger (Real-time, newest-first)
  */
 export const subscribeLedgerTransactions = (
     ledgerId: string,
-    callback: (transactions: Transaction[]) => void
+    callback: (transactions: Transaction[]) => void,
+    pageSize: number = 20
 ): (() => void) => {
     const txRef = getLedgerTransactionsRef(ledgerId);
-    // Order ascending: oldest first (like WhatsApp chat)
-    const q = query(txRef, orderBy('createdAt', 'asc'));
+    // Order descending: newest first
+    const q = query(txRef, orderBy('createdAt', 'desc'), limit(pageSize));
 
     return onSnapshot(q, (snapshot) => {
         const transactions: Transaction[] = snapshot.docs.map(docSnap => ({
@@ -203,6 +214,33 @@ export const subscribeLedgerTransactions = (
         } as Transaction));
         callback(transactions);
     });
+};
+
+/**
+ * Get a page of older transactions for infinite scrolling
+ */
+export const getLedgerTransactionsPage = async (
+    ledgerId: string,
+    lastVisibleTx: QueryDocumentSnapshot | null, 
+    pageSize: number = 20
+): Promise<{ transactions: Transaction[], lastVisible: QueryDocumentSnapshot | null }> => {
+    const txRef = getLedgerTransactionsRef(ledgerId);
+    let q = query(txRef, orderBy('createdAt', 'desc'), limit(pageSize));
+    
+    if (lastVisibleTx) {
+        q = query(txRef, orderBy('createdAt', 'desc'), startAfter(lastVisibleTx), limit(pageSize));
+    }
+
+    const snapshot = await getDocs(q);
+    const transactions: Transaction[] = snapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data()
+    } as Transaction));
+
+    return {
+        transactions,
+        lastVisible: (snapshot.docs[snapshot.docs.length - 1] as QueryDocumentSnapshot) || null
+    };
 };
 
 /**

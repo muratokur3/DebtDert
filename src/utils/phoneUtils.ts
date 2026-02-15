@@ -1,100 +1,113 @@
 import { parsePhoneNumber, isValidPhoneNumber as isValidLibPhone } from 'libphonenumber-js';
-
-const DEFAULT_COUNTRY = 'TR';
+import type { CountryCode } from 'libphonenumber-js';
 
 /**
- * Parses and cleans a phone number to E.164 format.
- * Example: "0555 123 45 67" -> "+905551234567"
- * @param input The raw phone number string
- * @returns The formatted E.164 string
+ * Standardizes a phone number to E.164 format.
+ * Rules:
+ * - Must start with +
+ * - Only digits after +
+ * - Length 8-15 digits
+ * 
+ * @param input The raw input from UI or system
+ * @param defaultRegion? Optional region to try if + is missing (e.g. 'TR')
  */
-export const cleanPhone = (input: string): string => {
-    if (!input) return '';
+export const formatToE164 = (input: string, defaultRegion?: string): string | null => {
+    if (!input) return null;
+
+    // Remove everything except digits and the leading +
+    const clean = input.trim();
+    
     try {
-        // Parse with default country TR
-        const phoneNumber = parsePhoneNumber(input, DEFAULT_COUNTRY);
-        if (phoneNumber) {
-            return phoneNumber.number as string; // Returns E.164
+        const phoneNumber = parsePhoneNumber(clean, defaultRegion as CountryCode);
+        if (phoneNumber && phoneNumber.isValid()) {
+            return phoneNumber.format('E.164');
         }
     } catch {
-        // Fallback or ignore parse errors (will return handled below or processed crudely)
+        // Fallback to manual cleanup if libphone fails but format looks okay
     }
 
-    // Fallback for partial or extremely messy inputs if libphonenumber fails but we want to try?
-    // Actually, strict mode means we rely on the library.
-    // But for "cleaning" raw digits if it fails parsing (e.g. valid local number but parse failed??)
-    // usually parsePhoneNumber works for valid TR numbers like "5551234567" -> +90...
-
-    // If it fails, let's just do a basic digit cleanup to be safe, or return empty?
-    // User requested: "Output ALWAYS E.164". If invalid, we return what?
-    // Let's return the cleaned digits with +90 if length matches, essentially our old logic as absolute fallback.
-    // Digits only cleanup
-    const digits = input.replace(/\D/g, '');
-
-    // TR specific heuristics for robust cleaning
-    if (digits.length === 10 && (digits.startsWith('5') || digits.startsWith('05'))) {
-        return `+90${digits}`; // 5551234567 -> +905551234567
-    }
-    if (digits.length === 11 && digits.startsWith('0')) {
-        return `+90${digits.substring(1)}`; // 05551234567 -> +905551234567
-    }
-    if (digits.length === 12 && digits.startsWith('90')) {
-        return `+${digits}`; // 905551234567 -> +905551234567
+    // Manual fallback: string starts with +, has 8-15 digits total
+    const digitsOnly = input.replace(/\D/g, '');
+    if (input.includes('+') && digitsOnly.length >= 7 && digitsOnly.length <= 15) {
+        return '+' + digitsOnly;
     }
 
-    // Default: Return +digits if it looks international, otherwise just digits?
-    // Manifest says E.164. If we can't parse or detect TR, we might be in trouble.
-    // Let's assume input +digits is safe.
-    if (input.includes('+')) return `+${digits}`;
+    return null;
+};
 
-    return digits.length > 10 ? `+${digits}` : digits; // Fallback
+/**
+ * Strict E.164 Validation
+ * Format: +[CountryCode][Number] (e.g., +905551234567)
+ */
+export const isValidPhone = (number: string): boolean => {
+    if (!number) return false;
+    // E.164 Regex: Starts with +, followed by 7 to 15 digits
+    const e164Regex = /^\+[1-9]\d{6,14}$/;
+    if (!e164Regex.test(number)) return false;
+    
+    // Validate with libphonenumber as second layer if possible
+    try {
+        return isValidLibPhone(number);
+    } catch {
+        return true; 
+    }
 };
 
 /**
  * Formats a phone number for display.
- * Example: "+905551234567" -> "0 555 123 45 67" or international format
- * @param cleanNumber The E.164 number
+ * @param e164Number The clean E.164 number
  */
-export const formatPhoneForDisplay = (cleanNumber: string): string => {
-    if (!cleanNumber) return '';
+export const formatPhoneForDisplay = (e164Number: string): string => {
+    if (!e164Number) return '';
     try {
-        const phoneNumber = parsePhoneNumber(cleanNumber);
+        const phoneNumber = parsePhoneNumber(e164Number);
         if (phoneNumber) {
-            // "National" format for TR starts with 0 usually in libphonenumber? 
-            // We want predictable +90 format or readable international for Contacts.
             return phoneNumber.format('INTERNATIONAL');
         }
     } catch {
         // ignore
     }
-    return cleanNumber;
+    return e164Number;
+};
+
+// Legacy alias for gradual migration
+export const cleanPhone = (input: string): string => {
+    return formatToE164(input, 'TR') || '';
 };
 
 /**
- * Checks if the phone number is valid.
- * @param input The raw or cleaned phone number
+ * Standardizes a raw search term into a potential phone number.
+ * Handles cases like:
+ * - 0551... -> +90551...
+ * - 90551... -> +90551...
+ * - +90551... -> +90551...
  */
-export const isValidPhone = (input: string): boolean => {
-    if (!input) return false;
-    try {
-        return isValidLibPhone(input, DEFAULT_COUNTRY);
-    } catch {
-        return false;
-    }
-};
+export const standardizeRawPhone = (input: string): string => {
+    const raw = input.replace(/\s/g, '');
+    if (!raw) return '';
 
-/**
- * Gets the country calling code.
- * @param input Phone number
- */
-export const getCountryCode = (input: string): string => {
-    try {
-        const phoneNumber = parsePhoneNumber(input, DEFAULT_COUNTRY);
-        if (phoneNumber) {
-            return `+${phoneNumber.countryCallingCode}`;
-        }
-    } catch {
-        // ignore
+    // If starts with +, it's already a candidate E.164
+    if (raw.startsWith('+')) return raw;
+
+    // If starts with 0 and has 11 digits (Turkey local format)
+    if (raw.startsWith('0') && raw.length === 11) {
+        return '+90' + raw.substring(1);
     }
-    return '+90'; // Default
+
+    // If starts with 90 and has 12 digits (Turkey code without +)
+    if (raw.startsWith('90') && raw.length === 12) {
+        return '+' + raw;
+    }
+
+    // If it's a 10 digit number, assume TR (+90)
+    if (raw.length === 10 && /^\d+$/.test(raw)) {
+        return '+90' + raw;
+    }
+
+    // Otherwise, if it has digits, just prefix with + to trigger E.164 parsing in components
+    if (/^\d+$/.test(raw) && raw.length > 5) {
+        return '+' + raw;
+    }
+
+    return raw;
 };

@@ -37,7 +37,6 @@ export const ContactModal: React.FC<ContactModalProps> = ({
     const [duplicateContact, setDuplicateContact] = useState<Contact | null>(null);
     const [contactsCache, setContactsCache] = useState<Contact[]>([]);
     const [suggestedUser, setSuggestedUser] = useState<User | null>(null);
-    const [isResolvingUser, setIsResolvingUser] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
@@ -94,7 +93,6 @@ export const ContactModal: React.FC<ContactModalProps> = ({
                 // Optimization: Don't search if we already found this specific number
                 if (suggestedUser && (suggestedUser.phoneNumber === cleanedInput || suggestedUser.primaryPhoneNumber === cleanedInput)) return;
 
-                setIsResolvingUser(true);
                 try {
                     const found = await searchUserByPhone(cleanedInput);
                     // Don't suggest self
@@ -107,7 +105,7 @@ export const ContactModal: React.FC<ContactModalProps> = ({
                     console.error("User lookup failed", err);
                     setSuggestedUser(null);
                 } finally {
-                    setIsResolvingUser(false);
+                    // done
                 }
             } else {
                 setSuggestedUser(null);
@@ -116,7 +114,7 @@ export const ContactModal: React.FC<ContactModalProps> = ({
 
         const debounce = setTimeout(checkSystemUser, 500);
         return () => clearTimeout(debounce);
-    }, [phone, user, contactToEdit, suggestedUser?.phoneNumber, suggestedUser?.primaryPhoneNumber]);
+    }, [phone, user, contactToEdit, suggestedUser]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -131,21 +129,50 @@ export const ContactModal: React.FC<ContactModalProps> = ({
         try {
             let resultContact: Contact | null = null;
 
+            let linkId: string | undefined = undefined;
+            if (suggestedUser) {
+               const cleanInput = cleanPhone(phone);
+               if (cleanInput && (suggestedUser.phoneNumber === cleanInput || suggestedUser.primaryPhoneNumber === cleanInput)) {
+                   linkId = suggestedUser.uid;
+               }
+            }
+
             if (contactToEdit) {
-                await updateContact(user.uid, contactToEdit.id, { name, phoneNumber: phone });
-                resultContact = { ...contactToEdit, name, phoneNumber: phone };
+                await updateContact(user.uid, contactToEdit.id, { 
+                    name, 
+                    phoneNumber: phone,
+                    linkedUserId: linkId // Update link if found
+                });
+                // If we found a link, update it, otherwise keep existing or undefined? 
+                // Actually if user changes phone to a non-registered one, link should probably be removed (set to null/undefined).
+                // But Firestore partial update merges. If we want to remove, we might need deleteField() if generic, 
+                // but here passing specific value. If linkId is undefined, it won't overwrite existing if we rely on ... spread?
+                // Wait, if I change phone number, the old link is invalid. I should probably force update linkedUserId.
+                // If linkId is undefined, it means no user found for NEW phone. So we should clear it.
+                // But undefined fields are often ignored in Firestore updates unless explicit.
+                // For now, let's assume if found -> set. If not found -> we might want to unset if phone changed?
+                // Let's stick to: if found, set it. logic for unsetting on phone change is safer if we handle it explicitly.
+                // Ideally: if phone changed, clear linkedUserId. If new phone matches user, set linkedUserId.
+                
+                // Simplified: Only set if found for now to solve the "missing link" issue.
+                // To properly clear, we'd need to check if phone changed. 
+                // Let's pass linkId || null (if we want to clear) but Partial<Contact> expects string | undefined.
+                
+                resultContact = { ...contactToEdit, name, phoneNumber: phone, linkedUserId: linkId || contactToEdit.linkedUserId };
+                // Update DB with link if found
+                if (linkId) {
+                     await updateContact(user.uid, contactToEdit.id, { linkedUserId: linkId });
+                }
+                
                 showAlert("Başarılı", "Kişi güncellendi.", "success");
             } else {
-                const newId = await addContact(user.uid, name, phone);
-                // Construct the contact object locally since addContact returns ID
+                const newId = await addContact(user.uid, name, phone, linkId);
                 resultContact = {
                     id: newId,
                     name,
                     phoneNumber: phone,
-                    createdAt: Timestamp.now(), // Approximation
-                    linkedUserId: undefined
-                    // We don't know linkedUserId immediately without re-fetching or complex logic,
-                    // but for "Create Debt" immediate usage, name and phone are enough.
+                    createdAt: Timestamp.now(),
+                    linkedUserId: linkId
                 };
                 showAlert("Başarılı", "Kişi eklendi.", "success");
             }

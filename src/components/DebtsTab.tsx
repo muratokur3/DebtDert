@@ -108,6 +108,8 @@ export const DebtsTab = ({ debts }: DebtsTabProps) => {
                             debt={debt}
                             currentUserId={user?.uid || ''}
                             onClick={() => navigate(`/debt/${debt.id}`)}
+                            hideAvatar={false}
+                            variant="chat"
                         />
                     ))}
                 </div>

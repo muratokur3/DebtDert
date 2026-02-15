@@ -1,18 +1,18 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useContacts } from '../hooks/useContacts';
 import { useAuth } from '../hooks/useAuth';
 import { useDebts } from '../hooks/useDebts';
 import { useContactName } from '../hooks/useContactName';
 import { ArrowLeft, Phone, MessageCircle, Trash2, Edit2, X, MoreVertical, Ban, UserPlus, VolumeX, Volume2, FolderOpen } from 'lucide-react';
 import { searchUserByPhone, getContacts, updateContact, addContact, deleteContact, muteUser, unmuteUser, markContactAsRead, createDebt, permanentlyDeleteDebt } from '../services/db';
 import { blockUser, isUserBlocked, unblockUser } from '../services/blockService';
-import { Avatar } from '../components/Avatar';
+
 import { DebtCard } from '../components/DebtCard';
 import { TransactionList } from '../components/TransactionList';
 import { CreateDebtModal } from '../components/CreateDebtModal';
 import { UserBalanceHeader } from '../components/UserBalanceHeader';
 import { PhoneInput } from '../components/PhoneInput';
-import { convertToTRY, fetchRates, type CurrencyRates } from '../services/currency';
 import { cleanPhone as cleanPhoneNumber, formatPhoneForDisplay as formatPhoneNumber } from '../utils/phoneUtils';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -25,6 +25,7 @@ import type { User, Contact, Debt } from '../types';
 import { useLedger } from '../hooks/useLedger';
 
 export const PersonDetail = () => {
+    const { contactsMap } = useContacts();
     const { id } = useParams<{ id: string }>();
     const { user } = useAuth();
     const navigate = useNavigate();
@@ -32,7 +33,7 @@ export const PersonDetail = () => {
     const { allDebts: debts, loading } = useDebts();
     const { resolveName } = useContactName();
     const { showAlert, showConfirm } = useModal();
-    const [rates, setRates] = useState<CurrencyRates | null>(null);
+
     const [isRegisteredUser, setIsRegisteredUser] = useState(false);
 
     const [targetUserObject, setTargetUserObject] = useState<User | Contact | null>(null);
@@ -112,14 +113,14 @@ export const PersonDetail = () => {
         return () => window.removeEventListener('trigger-person-fab-action', handleBottomNavTrigger);
     }, [isBlocked]);
 
-    const getTargetUid = () => {
+    const getTargetUid = useCallback(() => {
         if (id && id.length > 20) return id;
         if (targetUserObject) {
             if ('uid' in targetUserObject) return targetUserObject.uid;
             if ('linkedUserId' in targetUserObject && targetUserObject.linkedUserId) return targetUserObject.linkedUserId;
         }
         return null;
-    };
+    }, [id, targetUserObject]);
 
     useEffect(() => {
         if (user && id) {
@@ -145,7 +146,7 @@ export const PersonDetail = () => {
             }
         };
         checkStatus();
-    }, [user, id, targetUserObject]);
+    }, [user, id, targetUserObject, getTargetUid]);
 
     const handleBlockToggle = async () => {
         if (!user) return;
@@ -227,9 +228,7 @@ export const PersonDetail = () => {
         }
     };
 
-    useEffect(() => {
-        fetchRates().then(setRates);
-    }, []);
+
 
     const [resolvedUid, setResolvedUid] = useState<string | null>(null);
 
@@ -240,7 +239,7 @@ export const PersonDetail = () => {
 
             let foundSysUser: User | null = null;
 
-            if (id.length > 20) {
+            if (isUID) {
                 setResolvedUid(id);
                 setIsRegisteredUser(true);
                 try {
@@ -371,30 +370,77 @@ export const PersonDetail = () => {
             phone = locationState.phone;
         }
 
-        if (contactId && editName) {
+        // --- NEW SYNC RESOLUTION ---
+        // Try to find the contact immediately using the robust contactsMap
+        let directContactMatch = contactsMap.get(id || '');
+        if (!directContactMatch && phone && phone.length <= 20) {
+            directContactMatch = contactsMap.get(phone);
+        }
+        
+        // If we found a contact match, FORCE the display to use it
+        if (directContactMatch) {
             return {
-                name: editName,
-                phone: cleanPhoneNumber(editPhone || phone)
+                name: directContactMatch.name,
+                phone: directContactMatch.phoneNumber,
+                source: 'contact',
+                status: 'contact', // Added status
+                contactId: directContactMatch.id
             };
         }
 
-        const { displayName } = resolveName(id || '', fallbackName);
+        if (contactId && editName) {
+            return {
+                name: editName,
+                phone: cleanPhoneNumber(editPhone || phone),
+                source: 'contact',
+                status: 'contact', // Added status
+                contactId: contactId
+            };
+        }
+
+        const { displayName, source, status } = resolveName(id || '', fallbackName, phone.length > 20 ? undefined : phone);
+        let finalName = displayName;
+
+        // ULTIMATE FALLBACK
+        const isPhoneFormat = finalName.replace(/\s/g, '').replace(/\+/g, '').length >= 10 && !isNaN(Number(finalName.replace(/\s/g, '').replace(/\+/g, '')));
+        if ((isPhoneFormat || finalName === 'Bilinmeyen') && fallbackName && fallbackName !== id) {
+            finalName = fallbackName;
+        }
 
         return {
-            name: displayName,
-            phone: phone.length > 20 ? '' : phone
+            name: finalName,
+            phone: phone.length > 20 ? '' : phone,
+            source: source,
+            status: status, // Added status
+            contactId: null // Explicitly null if not found in map
         };
-    }, [personDebts, user, id, contactId, editName, editPhone, resolveName, targetUserObject, location.state]);
+    }, [personDebts, user, id, contactId, editName, editPhone, resolveName, targetUserObject, location.state, contactsMap]);
     
+    // ... (rest of the effects) ...
 
     useEffect(() => {
         const checkContactStatus = async () => {
+             // We rely on personInfo.contactId if available
+             if (personInfo.contactId && personInfo.contactId !== contactId) {
+                 setContactId(personInfo.contactId);
+                 
+                 // Get read timestamp
+                 const match = contactsMap.get(cleanPhoneNumber(personInfo.phone || ''));
+                 if (match && match.lastReadAt) {
+                     setLastReadTimestamp(match.lastReadAt.toMillis());
+                 } else {
+                     setLastReadTimestamp(Date.now());
+                 }
+                 return;
+             }
+             
             if (!user || !personInfo.phone) return;
             if (personInfo.phone.length > 20) return; 
 
             const phoneToCheck = cleanPhoneNumber(personInfo.phone);
             
             try {
+                // Secondary async check (fallback)
                 const contacts = await getContacts(user.uid);
                 const match = contacts.find(c => c.phoneNumber === phoneToCheck);
                 
@@ -422,7 +468,7 @@ export const PersonDetail = () => {
         };
         
         checkContactStatus();
-    }, [user, personInfo.phone]);
+    }, [user, personInfo.phone, contactId, personInfo.contactId, contactsMap]);
 
     const otherPartyId = getTargetUid() || id;
     const { 
@@ -438,6 +484,8 @@ export const PersonDetail = () => {
 
     if (loading) return <div className="p-4 text-center">Yükleniyor...</div>;
 
+    const isOrphan = !contactId && !isRegisteredUser;
+
     return (
         <div className="min-h-full bg-background pb-24">
             <header className="bg-surface sticky top-0 z-10 shadow-sm transition-colors duration-200">
@@ -445,24 +493,33 @@ export const PersonDetail = () => {
                     <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-text-secondary hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors shrink-0">
                         <ArrowLeft size={20} />
                     </button>
+                    
 
-                    <div className="shrink-0">
-                        <Avatar
-                            name={personInfo.name}
-                            size="lg"
-                            status={isRegisteredUser ? 'system' : (contactId ? 'contact' : 'none')}
-                            className="shadow-sm"
-                            uid={
-                                targetUserObject
-                                    ? ('uid' in targetUserObject ? targetUserObject.uid : targetUserObject.linkedUserId)
-                                    : (id && id.length > 20 ? id : undefined)
-                            }
-                        />
-                    </div>
 
-                    <div className="flex flex-col justify-center overflow-hidden min-w-0 mr-2">
-                        <h1 className="text-base font-bold text-text-primary leading-tight truncate">{personInfo.name}</h1>
-                        <p className="text-xs text-text-secondary font-medium mt-0.5 truncate">{formatPhoneNumber(personInfo.phone || '')}</p>
+                    <div className="flex flex-col justify-center overflow-hidden min-w-0 mr-2 flex-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <h1 className="text-base font-bold text-text-primary leading-tight truncate">{personInfo.name}</h1>
+                            {isOrphan && (
+                                <span className="shrink-0 text-[10px] font-bold bg-gray-100 dark:bg-slate-800 text-gray-500 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                    Rehberde Yok
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-xs text-text-secondary font-medium truncate">{formatPhoneNumber(personInfo.phone || '')}</p>
+                            {isOrphan && (
+                                <button 
+                                    onClick={() => {
+                                        setEditName(personInfo.name);
+                                        setEditPhone(personInfo.phone || '');
+                                        setShowEditModal(true);
+                                    }}
+                                    className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-0.5"
+                                >
+                                    <UserPlus size={10} /> Kaydet
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     <div className="ml-auto flex items-center gap-2 shrink-0">
@@ -695,6 +752,7 @@ export const PersonDetail = () => {
                                                                     onClick={() => navigate(`/debt/${debt.id}`)}
                                                                     disabled={isBlocked}
                                                                     variant="chat"
+                                                                    hideAvatar={true}
                                                                 />
                                                             </AdaptiveActionRow>
                                                         );

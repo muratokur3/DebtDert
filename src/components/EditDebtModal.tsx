@@ -3,6 +3,8 @@ import { X, Calendar, AlertCircle } from 'lucide-react';
 import type { Debt } from '../types';
 import { Timestamp, deleteField } from 'firebase/firestore';
 import { useModal } from '../context/ModalContext';
+import { formatAmountToWords } from '../utils/format';
+import { AmountInput } from './AmountInput';
 
 interface EditDebtModalProps {
     isOpen: boolean;
@@ -40,7 +42,7 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
         e.preventDefault();
         setLoading(true);
         try {
-            const updates: any = {
+            const updates: Partial<Debt> = {
                 note
             };
 
@@ -48,7 +50,7 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                 updates.dueDate = Timestamp.fromDate(new Date(dueDate));
             } else {
                 // If cleared, remove the field from DB using deleteField()
-                updates.dueDate = deleteField();
+                updates.dueDate = deleteField() as any;
             }
 
             if (!hasPayments) {
@@ -61,7 +63,7 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
             }
 
             // Remove undefined keys just in case (though we handle dueDate specifically now)
-            Object.keys(updates).forEach(key => updates[key] === undefined && delete updates[key]);
+            Object.keys(updates).forEach(key => (updates as any)[key] === undefined && delete (updates as any)[key]);
 
             await onUpdate(debt.id, updates);
             onClose();
@@ -91,34 +93,37 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="flex gap-3">
-                        <div className="flex-1">
-                            <label className="block text-sm font-medium text-text-secondary mb-1">Tutar</label>
-                            <input
-                                type="number"
-                                value={amount}
-                                onChange={(e) => setAmount(e.target.value)}
-                                disabled={hasPayments}
-                                min={0}
-                                step="0.01"
-                                className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                required
-                            />
+                    <div className="space-y-1">
+                        <div className="flex items-start gap-3">
+                            <div className="flex-1">
+                                <AmountInput
+                                    label="Tutar"
+                                    value={amount}
+                                    onChange={setAmount}
+                                    disabled={hasPayments}
+                                    required
+                                />
+                            </div>
+                            <div className="w-1/3">
+                                <label className="block text-sm font-medium text-text-secondary mb-1">Döviz</label>
+                                <select
+                                    value={currency}
+                                    onChange={(e) => setCurrency(e.target.value)}
+                                    disabled={hasPayments}
+                                    className="w-full px-3 py-2.5 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all font-bold text-base disabled:opacity-50 disabled:cursor-not-allowed h-[46px]"
+                                >
+                                    <option value="TRY">₺</option>
+                                    <option value="USD">$</option>
+                                    <option value="EUR">€</option>
+                                    <option value="GOLD">Gr</option>
+                                </select>
+                            </div>
                         </div>
-                        <div className="w-1/3">
-                            <label className="block text-sm font-medium text-text-secondary mb-1">Para Birimi</label>
-                            <select
-                                value={currency}
-                                onChange={(e) => setCurrency(e.target.value)}
-                                disabled={hasPayments}
-                                className="w-full px-4 py-3 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <option value="TRY">TRY</option>
-                                <option value="USD">USD</option>
-                                <option value="EUR">EUR</option>
-                                <option value="GOLD">Altın (Gr)</option>
-                            </select>
-                        </div>
+                        {amount && (
+                            <p className="text-[10px] text-text-secondary italic text-left animate-in fade-in slide-in-from-top-1 px-1 mt-0.5">
+                                {formatAmountToWords(amount, currency)}
+                            </p>
+                        )}
                     </div>
 
                     <div>

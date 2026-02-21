@@ -7,9 +7,9 @@ import { useState, useMemo, useEffect } from 'react';
 import { FolderOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import { SummaryCard } from './SummaryCard';
 import { fetchRates, convertToTRY, type CurrencyRates } from '../services/currency';
-import { 
-    calculateStreamBalance, 
-    calculateDebtsBalance, 
+import {
+    calculateStreamBalance,
+    calculateDebtsBalance,
     mergeBalances,
     getCurrencySymbol
 } from '../utils/balanceAggregator';
@@ -58,7 +58,7 @@ export const UserBalanceHeader: React.FC<UserBalanceHeaderProps> = ({
     const debtsPreview = useMemo(() => {
         const entries = Array.from(debtsBalance.entries()).filter(([, s]) => s.net !== 0);
         if (entries.length === 0) return null;
-        
+
         const [currency, summary] = entries[0];
         const sign = summary.net > 0 ? '+' : '';
         return `${sign}${getCurrencySymbol(currency)}${Math.abs(summary.net).toLocaleString('tr-TR')}`;
@@ -99,9 +99,9 @@ export const UserBalanceHeader: React.FC<UserBalanceHeaderProps> = ({
                                 />
                             );
                         })}
-                    
+
                     {displayBalance.size === 0 && (
-                         <div className="py-8 text-center w-full text-text-tertiary italic text-sm">
+                        <div className="py-8 text-center w-full text-text-tertiary italic text-sm">
                             Hesap Denk
                         </div>
                     )}
@@ -121,8 +121,8 @@ export const UserBalanceHeader: React.FC<UserBalanceHeaderProps> = ({
                 >
                     <FolderOpen size={16} />
                     <span>
-                        {showTotalBalance 
-                            ? 'Sadece Akışı Göster' 
+                        {showTotalBalance
+                            ? 'Sadece Akışı Göster'
                             : 'Özel Borçları Dahil Et'
                         }
                     </span>
@@ -140,11 +140,11 @@ export const UserBalanceHeader: React.FC<UserBalanceHeaderProps> = ({
                     <div className="space-y-6">
                         {/* Stream Layer */}
                         <div>
-                             <p className="text-[10px] text-text-tertiary mb-2 uppercase tracking-widest font-bold px-1 flex items-center gap-2">
+                            <p className="text-[10px] text-text-tertiary mb-2 uppercase tracking-widest font-bold px-1 flex items-center gap-2">
                                 <div className="w-1 h-3 bg-blue-500 rounded-full"></div>
                                 Akış Dağılımı
-                             </p>
-                             <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide py-1">
+                            </p>
+                            <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide py-1">
                                 {Array.from(streamBalance.entries())
                                     .sort((a) => (a[0] === 'TRY' ? -1 : 1))
                                     .map(([currency, balance]) => (
@@ -160,16 +160,16 @@ export const UserBalanceHeader: React.FC<UserBalanceHeaderProps> = ({
                                         />
                                     ))
                                 }
-                             </div>
+                            </div>
                         </div>
 
                         {/* Debts Layer */}
                         <div>
-                             <p className="text-[10px] text-text-tertiary mb-2 uppercase tracking-widest font-bold px-1 flex items-center gap-2">
+                            <p className="text-[10px] text-text-tertiary mb-2 uppercase tracking-widest font-bold px-1 flex items-center gap-2">
                                 <div className="w-1 h-3 bg-purple-500 rounded-full"></div>
                                 Özel Borçlar Dağılımı
-                             </p>
-                             <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide py-1">
+                            </p>
+                            <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide py-1">
                                 {Array.from(debtsBalance.entries())
                                     .sort((a) => (a[0] === 'TRY' ? -1 : 1))
                                     .map(([currency, balance]) => (
@@ -185,7 +185,7 @@ export const UserBalanceHeader: React.FC<UserBalanceHeaderProps> = ({
                                         />
                                     ))
                                 }
-                             </div>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -107,9 +107,11 @@ export const HistoryList: React.FC<HistoryListProps> = ({ logs, currency, isLend
                                 contentClassName="bg-background"
                             >
                                 <div className={clsx(
-                                    "p-3 rounded-lg border relative shadow-sm max-w-[70%] sm:max-w-[50%]",
-                                    isMine ? "ml-auto bg-green-50/50 border-green-200" : "mr-auto bg-white border-slate-200",
-                                    log.status === 'REJECTED' && "bg-red-50 border-red-200 opacity-75"
+                                    "p-3 rounded-2xl border-2 relative shadow-sm max-w-[80%] sm:max-w-[70%] transition-all",
+                                    isMine
+                                        ? "ml-auto bg-green-50/20 border-green-200 rounded-tr-sm"
+                                        : "mr-auto bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-tl-sm",
+                                    log.status === 'REJECTED' && "bg-red-50 border-red-200 opacity-75 grayscale"
                                 )}>
                                     <div className="flex items-center justify-between mb-2">
                                         <div className="flex items-center gap-3">

@@ -104,7 +104,8 @@ export const useNotifications = () => {
 
             // 2. EXTERNAL UPDATES (Payments, Edits, Rejections)
             if (debt.updatedAt && debt.auditMeta && !isMe(debt.auditMeta.actorId)) {
-                const updateTime = debt.updatedAt.toDate().getTime();
+                // Round update time to nearest second for stability
+                const updateTime = Math.floor(debt.updatedAt.toDate().getTime() / 1000) * 1000;
                 const creationTime = debt.createdAt ? debt.createdAt.toDate().getTime() : 0;
 
                 // Only show if updatedAt is NEWER than createdAt (avoid double notif on creation)
@@ -119,7 +120,10 @@ export const useNotifications = () => {
                         let message = '';
                         const otherPartyName = isLender ? debt.borrowerName : debt.lenderName;
 
-                        if (debt.status === 'REJECTED' || debt.status === 'REJECTED_BY_RECEIVER' || debt.status === 'DISPUTED') {
+                        if (debt.type === 'LEDGER') {
+                            message = `${otherPartyName} cari hesaba işlem ekledi.`;
+                            type = 'PAYMENT_MADE';
+                        } else if (debt.status === 'REJECTED' || debt.status === 'REJECTED_BY_RECEIVER' || debt.status === 'DISPUTED') {
                             type = 'DEBT_REJECTED';
                             message = `${otherPartyName} borç kaydını reddetti.`;
                         } else if (debt.status === 'PAID' || (debt.remainingAmount < debt.originalAmount)) {
@@ -212,7 +216,7 @@ export const useNotifications = () => {
         });
 
         return filtered.sort((a, b) => b.date.getTime() - a.date.getTime());
-    }, [debts, user, readNotifications, deletedNotifications]);
+    }, [debts, user, readNotifications, deletedNotifications, isMe]);
 
     const markAsRead = (notificationId: string) => {
         if (!user) return;
@@ -268,6 +272,15 @@ export const useNotifications = () => {
         }
     };
 
+    const markAllAsRead = () => {
+        // Mark all current unread notifications as read
+        notifications.forEach(notif => {
+            if (!notif.read) {
+                markAsRead(notif.id);
+            }
+        });
+    };
+
     const clearAllNotifications = () => {
         // Mark all current notifications as deleted
         notifications.forEach(notif => {
@@ -275,5 +288,5 @@ export const useNotifications = () => {
         });
     };
 
-    return { notifications, markAsRead, deleteNotification, clearAllNotifications };
+    return { notifications, markAsRead, deleteNotification, markAllAsRead, clearAllNotifications };
 };

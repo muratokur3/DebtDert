@@ -29,13 +29,15 @@ import { ThemeProvider } from './context/ThemeContext';
 import { ModalProvider } from './context/ModalContext';
 
 import { ContactProvider } from './context/ContactContext';
+import { NotificationProvider } from './context/NotificationContext';
 
 function App() {
   return (
     <ThemeProvider>
       <ModalProvider>
         <ContactProvider>
-          <div className="w-full max-w-3xl mx-auto min-h-screen bg-background shadow-2xl relative border-x border-border">
+          <NotificationProvider>
+            <div className="w-full max-w-3xl mx-auto min-h-screen bg-background shadow-2xl relative border-x border-border">
             <Router>
               <Routes>
                 <Route path="/login" element={<Login />} />
@@ -63,7 +65,8 @@ function App() {
                 </Route>
               </Routes>
             </Router>
-          </div>
+            </div>
+          </NotificationProvider>
         </ContactProvider>
       </ModalProvider>
     </ThemeProvider>

@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { X, Bell, AlertCircle } from 'lucide-react';
+import React from 'react';
+import { X, CheckCircle2, AlertTriangle, AlertCircle, Info } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 
 export interface ToastNotification {
@@ -7,7 +8,7 @@ export interface ToastNotification {
     title: string;
     message: string;
     type: 'success' | 'warning' | 'error' | 'info';
-    duration?: number; // ms, default 3000
+    duration?: number;
 }
 
 interface NotificationToastProps {
@@ -16,69 +17,55 @@ interface NotificationToastProps {
 }
 
 export const NotificationToast: React.FC<NotificationToastProps> = ({ notification, onClose }) => {
-    const [isExiting, setIsExiting] = useState(false);
+    const iconMap = {
+        success: <CheckCircle2 size={20} className="text-emerald-500" />,
+        warning: <AlertTriangle size={20} className="text-amber-500" />,
+        error: <AlertCircle size={20} className="text-rose-500" />,
+        info: <Info size={20} className="text-blue-500" />
+    };
 
-    useEffect(() => {
-        if (!notification) return;
-
-        const duration = notification.duration || 3000;
-        const timer = setTimeout(() => {
-            setIsExiting(true);
-            setTimeout(onClose, 300); // Wait for animation
-        }, duration);
-
-        return () => clearTimeout(timer);
-    }, [notification, onClose]);
-
-    if (!notification) return null;
-
-    const bgColor = {
-        success: 'bg-green-900/30 border-green-700',
-        warning: 'bg-yellow-900/30 border-yellow-700',
-        error: 'bg-red-900/30 border-red-700',
-        info: 'bg-blue-900/30 border-blue-700'
-    }[notification.type];
-
-    const iconColor = {
-        success: 'text-green-400',
-        warning: 'text-yellow-400',
-        error: 'text-red-400',
-        info: 'text-blue-400'
-    }[notification.type];
+    const typeStyles = {
+        success: 'border-emerald-500/20 bg-emerald-500/5',
+        warning: 'border-amber-500/20 bg-amber-500/5',
+        error: 'border-rose-500/20 bg-rose-500/5',
+        info: 'border-blue-500/20 bg-blue-500/5'
+    };
 
     return (
-        <div
-            className={clsx(
-                'fixed top-4 left-4 right-4 max-w-sm mx-auto z-[9999] transition-all duration-300',
-                isExiting ? 'translate-y-0 opacity-0 pointer-events-none' : 'translate-y-0 opacity-100',
-                'animate-in fade-in slide-in-from-top-2'
-            )}
-        >
-            <div className={clsx(
-                'bg-surface border rounded-xl p-4 shadow-lg flex items-start gap-3',
-                bgColor
-            )}>
-                <Bell size={20} className={clsx('flex-shrink-0 mt-0.5', iconColor)} />
-                
-                <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-text-primary text-sm">
-                        {notification.title}
-                    </h3>
-                    <p className="text-text-secondary text-xs mt-1 line-clamp-2">
-                        {notification.message}
-                    </p>
-                </div>
-                
-                <button
-                    onClick={() => {
-                        setIsExiting(true);
-                        setTimeout(onClose, 300);
-                    }}
-                    className="flex-shrink-0 text-text-secondary hover:text-text-primary transition-colors"
+        <AnimatePresence>
+            {notification && (
+                <motion.div
+                    initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                    className="fixed top-4 left-4 right-4 max-w-sm mx-auto z-[9999]"
                 >
-                    <X size={16} />
-                </button>
-            </div>
-        </div>
+                    <div className={clsx(
+                        'bg-surface border rounded-2xl p-4 shadow-xl flex items-start gap-3 backdrop-blur-md',
+                        typeStyles[notification.type]
+                    )}>
+                        <div className="flex-shrink-0 mt-0.5">
+                            {iconMap[notification.type]}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-text-primary text-sm leading-tight">
+                                {notification.title}
+                            </h3>
+                            <p className="text-text-secondary text-xs mt-1 line-clamp-2 leading-relaxed">
+                                {notification.message}
+                            </p>
+                        </div>
+
+                        <button
+                            onClick={onClose}
+                            className="flex-shrink-0 -mt-1 -mr-1 p-1 text-text-secondary hover:text-text-primary hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-all"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
     );
 };

@@ -352,7 +352,7 @@ export const createDebt = async (
         remainingAmount: remainingAmount,
         currency,
         status: initialStatus,
-        participants: [lenderId, borrowerId],
+        participants: initialStatus === 'AUTO_HIDDEN' ? [currentUserId] : [lenderId, borrowerId],
         createdAt: serverTimestamp(),
         createdBy: currentUserId,
         type: (installments && installments.length > 0) ? 'INSTALLMENT' : 'ONE_TIME',
@@ -379,8 +379,8 @@ export const createDebt = async (
     const isLedger = debtData.type === 'LEDGER';
 
     // Recipient is the other party. Actor is Me.
-    // If other party has no UID, we don't send notification.
-    if (otherPartyId && otherPartyId.length > 20) {
+    // If other party has no UID, or if it is a SHADOW record (AUTO_HIDDEN due to block), we don't send notification.
+    if (otherPartyId && otherPartyId.length > 20 && initialStatus !== 'AUTO_HIDDEN') {
         notificationService.addNotification({
             userId: otherPartyId,
             actorId: currentUserId,
@@ -509,7 +509,7 @@ export const updateDebtHardReset = async (
             const otherPartyId = currentUserId === currentData.borrowerId ? currentData.lenderId : currentData.borrowerId;
             const actorName = currentUserId === currentData.lenderId ? currentData.lenderName : currentData.borrowerName;
 
-            if (otherPartyId && otherPartyId.length > 20) {
+            if (otherPartyId && otherPartyId.length > 20 && currentData.status !== 'AUTO_HIDDEN') {
                 notificationService.addNotification({
                     userId: otherPartyId,
                     actorId: currentUserId,
@@ -650,7 +650,7 @@ export const makePayment = async (
         const actorName = isActorLender ? debtData.lenderName : debtData.borrowerName;
         const msg = isActorLender ? `${actorName} ödemeyi kaydetti.` : `${actorName} ödeme yaptı.`;
 
-        if (otherPartyId && otherPartyId.length > 20) {
+        if (otherPartyId && otherPartyId.length > 20 && debtData.status !== 'AUTO_HIDDEN') {
             notificationService.addNotification({
                 userId: otherPartyId,
                 actorId: performedBy,
@@ -729,7 +729,7 @@ export const respondToDebtRequest = async (debtId: string, status: 'ACTIVE' | 'R
         const otherPartyId = performedBy === debtData.borrowerId ? debtData.lenderId : debtData.borrowerId;
         const actorName = performedBy === debtData.lenderId ? debtData.lenderName : debtData.borrowerName;
 
-        if (otherPartyId && otherPartyId.length > 20) {
+        if (otherPartyId && otherPartyId.length > 20 && debtData.status !== 'AUTO_HIDDEN') {
             notificationService.addNotification({
                 userId: otherPartyId,
                 actorId: performedBy,
@@ -1301,13 +1301,15 @@ export const deleteDebt = async (debtId: string, currentUserId: string) => {
         updateContactActivity(currentUserId, otherId, 'Borç silindi (Geri alındı)')
             .catch(err => console.warn("Activity feed update failed (non-critical):", err));
 
-        // Notification
-        if (otherId && otherId.length > 20) {
+        // Send Notification if other party is registered AND this isn't a shadowed record
+        const otherPartyId = otherId; // Renaming for clarity with the new condition
+        const debtData = data; // Renaming for clarity with the new condition
+        if (otherPartyId && otherPartyId.length > 20 && debtData.status !== 'AUTO_HIDDEN') {
             notificationService.addNotification({
-                userId: otherId,
+                userId: otherPartyId,
                 actorId: currentUserId,
                 type: 'DEBT_REJECTED',
-                message: `${currentUserId === data.lenderId ? data.lenderName : data.borrowerName} kaydı sildi.`,
+                message: `${currentUserId === debtData.lenderId ? debtData.lenderName : debtData.borrowerName} kaydı sildi.`,
                 debtId: debtId
             }).catch(err => console.warn("Delete notification failed:", err));
         }

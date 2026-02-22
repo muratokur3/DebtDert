@@ -40,7 +40,7 @@ export async function deleteUserAccount(userId: string): Promise<DeletionResult>
       displayName: '[Silinmiş Kullanıcı]',
       email: null,
       photoURL: null,
-      primaryPhoneNumber: '[REDACTED]',
+      phoneNumber: '[REDACTED]',
       phoneNumbers: [],
       deletedAt: new Date(),
       isAnonymized: true

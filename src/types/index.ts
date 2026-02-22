@@ -34,7 +34,6 @@ export interface User {
     recoveryEmail?: string;
     photoURL?: string;
     customExchangeRates?: Record<string, number>; // ✅ Moved to top level
-    mutedCreators?: string[]; // IDs of users whose debts are auto-hidden (Silent Mute)
     preferences?: {
         autoApproveDebt?: boolean;
         requireApproval?: boolean;
@@ -121,7 +120,6 @@ export interface Debt {
 
     // New fields for Unilateral Logic
     rejectedAt?: Timestamp;
-    isMuted?: boolean;
 
     // Dual-Layer Architecture
     type?: DebtType; // Default: 'ONE_TIME', 'LEDGER' for shared stream

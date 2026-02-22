@@ -70,8 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         setUser({
                             uid: firebaseUser.uid,
                             displayName: firebaseUser.displayName || 'Kullanıcı',
-                            phoneNumbers: firebaseUser.phoneNumber ? [firebaseUser.phoneNumber] : [],
-                            primaryPhoneNumber: firebaseUser.phoneNumber || ''
+                            phoneNumber: firebaseUser.phoneNumber || ''
                         } as User);
                     }
                     setLoading(false);

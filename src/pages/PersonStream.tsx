@@ -24,7 +24,7 @@ import { DateFilterDropdown, type QuickFilterType } from '../components/DateFilt
 import { CreateDebtModal } from '../components/CreateDebtModal';
 import { ContactModal } from '../components/ContactModal';
 import { useModal } from '../context/ModalContext';
-import { getContacts, markContactAsRead, deleteContact, muteUser, unmuteUser, deletePersonHistory } from '../services/db';
+import { getContacts, markContactAsRead, deleteContact, deletePersonHistory } from '../services/db';
 import { isUserBlocked, blockUser, unblockUser } from '../services/blockService';
 import { cleanPhone, formatPhoneForDisplay } from '../utils/phoneUtils';
 import { doc, getDoc } from 'firebase/firestore';
@@ -61,7 +61,6 @@ export const PersonStream = () => {
     const [contactId, setContactId] = useState<string | null>(null);
     const [resolvedUid, setResolvedUid] = useState<string | null>(null);
     const [isBlocked, setIsBlocked] = useState(false);
-    const [isMuted, setIsMuted] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
     const [showCreateDebtModal, setShowCreateDebtModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -124,7 +123,6 @@ export const PersonStream = () => {
                             const userData = userDoc.data() as User;
                             const blocked = await isUserBlocked(user.uid, contact.linkedUserId);
                             setIsBlocked(blocked);
-                            setIsMuted(userData.mutedCreators?.includes(user.uid) || false);
                         }
                     }
                 } else if (id.length > 20) {
@@ -135,8 +133,6 @@ export const PersonStream = () => {
                         setResolvedUid(id);
                         const blocked = await isUserBlocked(user.uid, id);
                         setIsBlocked(blocked);
-                        const uData = userDoc.data() as User;
-                        setIsMuted(uData.mutedCreators?.includes(user.uid) || false);
                     }
                 }
             } catch (error) {
@@ -189,8 +185,7 @@ export const PersonStream = () => {
         if (targetUserObject) {
             if ('displayName' in targetUserObject) name = targetUserObject.displayName || name;
             else if ('name' in targetUserObject) name = targetUserObject.name || name;
-            if ('primaryPhoneNumber' in targetUserObject) phone = targetUserObject.primaryPhoneNumber || phone;
-            else if ('phoneNumber' in targetUserObject) phone = targetUserObject.phoneNumber || phone;
+            phone = targetUserObject.phoneNumber || phone;
         }
 
         const resolution = resolveName(id || '', name, phone);
@@ -425,31 +420,7 @@ export const PersonStream = () => {
         }
     };
 
-    const handleMuteToggle = async () => {
-        if (!user) return;
-        const targetUid = getTargetUid();
-        if (!targetUid || targetUid.length <= 15) {
-            showAlert("Uyarı", "Bu kişi sisteme kayıtlı değil.", "warning");
-            return;
-        }
 
-        if (isMuted) {
-            await unmuteUser(user.uid, targetUid);
-            setIsMuted(false);
-            showAlert("Başarılı", "Sessize alma kaldırıldı.", "success");
-        } else {
-            const confirmed = await showConfirm(
-                "Sessize Al",
-                "Bu kullanıcıyı sessize aldığınızda, size eklediği borç kayıtlarını görmezsiniz. Karşı taraf normal eklendiğini sanacaktır. Devam etmek istiyor musunuz?",
-                "info"
-            );
-            if (confirmed) {
-                await muteUser(user.uid, targetUid);
-                setIsMuted(true);
-                showAlert("Sessize Alındı", "Kullanıcı sessize alındı.", "success");
-            }
-        }
-    };
 
     const handleDeleteContact = async () => {
         if (!user || !contactId) return;
@@ -524,13 +495,6 @@ export const PersonStream = () => {
                                 {resolvedUid && (
                                     <>
                                         <div className="h-px bg-border"></div>
-                                        <button
-                                            onClick={() => { handleMuteToggle(); setShowMenu(false); }}
-                                            className="w-full text-left px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 dark:hover:bg-slate-800 flex items-center gap-2"
-                                        >
-                                            {isMuted ? <Bell size={16} /> : <BellOff size={16} />}
-                                            {isMuted ? 'Sessizden Çıkar' : 'Sessize Al'}
-                                        </button>
                                         <button
                                             onClick={() => { handleBlockToggle(); setShowMenu(false); }}
                                             className="w-full text-left px-4 py-3 text-sm font-medium text-orange-600 hover:bg-orange-50 flex items-center gap-2"

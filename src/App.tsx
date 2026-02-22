@@ -5,7 +5,6 @@ import { DebtDetail } from './pages/DebtDetail';
 import { Contacts } from './pages/Contacts';
 import { Settings } from './pages/Settings';
 import { BlockedUsers } from './pages/BlockedUsers';
-import { MutedUsers } from './pages/MutedUsers';
 import { Tools } from './pages/Tools';
 import { ExchangeRates } from './pages/ExchangeRates';
 import { PersonStream } from './pages/PersonStream';
@@ -62,7 +61,6 @@ function App() {
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/settings/sessions" element={<ActiveSessions />} />
                   <Route path="/settings/blocked" element={<BlockedUsers />} />
-                  <Route path="/settings/muted" element={<MutedUsers />} />
                 </Route>
               </Routes>
               </NotificationProvider>

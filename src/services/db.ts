@@ -287,33 +287,14 @@ export const createDebt = async (
     // CHECK PREFERENCES & FETCH USER DATA
     const counterpartyId = isLending ? borrowerId : lenderId;
 
-    // BLOCK CHECK:
+    // UNILATERAL LOGIC: Default to ACTIVE.
+    let initialStatus: DebtStatus = 'ACTIVE';
+
+    // BLOCK CHECK: If there is a block between the users, hide this debt from the counterpart.
     if (counterpartyId.length > 20) {
         const isBlocked = await checkBlockStatus(currentUserId, counterpartyId);
         if (isBlocked) {
-            throw new Error("Cannot create debt. User is blocked or has blocked you.");
-        }
-    }
-
-    // UNILATERAL LOGIC: Default to ACTIVE.
-    // CHECK IF CREATOR IS MUTED BY TARGET
-    let initialStatus: DebtStatus = 'ACTIVE';
-    let isMuted = false;
-
-    if (counterpartyId.length > 20) {
-        // Check if I am muted by the target
-        // We use the helper we just added (need to ensure it's available or inline logic)
-        // Since we are inside db.ts, we can call use the logic directly or call the function if it was hoisted.
-        // But createDebt is above isCreatorMutedByTarget. So we must inline or move function up.
-        // Let's inline the check for safety as moving functions in large file is risky for diffs.
-        const targetUserRef = doc(db, 'users', counterpartyId);
-        const targetSnap = await getDoc(targetUserRef);
-        if (targetSnap.exists()) {
-            const targetData = targetSnap.data() as User;
-            if (targetData.mutedCreators?.includes(currentUserId)) {
-                initialStatus = 'AUTO_HIDDEN';
-                isMuted = true;
-            }
+            initialStatus = 'AUTO_HIDDEN';
         }
     }
 
@@ -327,11 +308,10 @@ export const createDebt = async (
         // Partial payment at start
         // Status remains ACTIVE or AUTO_HIDDEN unless defined otherwise.
         // Default initialStatus is 'ACTIVE' for all debts
-        initialStatus = 'ACTIVE';
-        // WAIT: If it is AUTO_HIDDEN, it should stay AUTO_HIDDEN even if partially paid?
-        // The requirement says: "If User A is in muted list -> Create with { status: 'AUTO_HIDDEN', isMuted: true }"
-        // Logic: If fully paid, it's history. If debt exists, it's hidden.
-        if (isMuted) initialStatus = 'AUTO_HIDDEN';
+        // (If block check set it to AUTO_HIDDEN earlier, it was overwritten here previously? Let's fix that)
+        if (initialStatus !== 'AUTO_HIDDEN') {
+            initialStatus = 'ACTIVE';
+        }
     }
 
     // Determine Contact Phone for Locking & Auto-Add
@@ -384,7 +364,6 @@ export const createDebt = async (
         ...(goldDetail && { goldDetail }),
         ...(customExchangeRate && { customExchangeRate }),
         // New Fields
-        ...(isMuted && { isMuted: true }),
         auditMeta: { // ✅ Added Audit Log
             actorId: currentUserId,
             timestamp: serverTimestamp(),
@@ -1362,65 +1341,7 @@ export const deleteDebt = async (debtId: string, currentUserId: string) => {
 export const permanentlyDeleteDebt = deleteDebt;
 
 
-// --- Mute / Silent Ignore Features ---
 
-/**
- * Mutes a user (Silent Ignore).
- * @param currentUid The user performing the mute.
- * @param targetUid The user to be muted.
- */
-export const muteUser = async (currentUid: string, targetUid: string) => {
-    try {
-        const userRef = doc(db, 'users', currentUid);
-        // We use arrayUnion to add to the list
-        const { arrayUnion } = await import('firebase/firestore');
-        await updateDoc(userRef, {
-            mutedCreators: arrayUnion(targetUid)
-        });
-    } catch (error) {
-        console.error("Error muting user:", error);
-        throw error;
-    }
-};
-
-/**
- * Unmutes a user.
- * @param currentUid The user performing the unmute.
- * @param targetUid The user to be unmuted.
- */
-export const unmuteUser = async (currentUid: string, targetUid: string) => {
-    try {
-        const userRef = doc(db, 'users', currentUid);
-        // We use arrayRemove to remove from the list
-        const { arrayRemove } = await import('firebase/firestore');
-        await updateDoc(userRef, {
-            mutedCreators: arrayRemove(targetUid)
-        });
-    } catch (error) {
-        console.error("Error unmuting user:", error);
-        throw error;
-    }
-};
-
-/**
- * Checks if a user is muted by another user.
- * This is effectively checking if targetUid has currentUid in their mutedCreators list.
- * USE CASE: When I (Creator) create a debt for Target, I need to know if Target has muted ME.
- */
-export const isCreatorMutedByTarget = async (creatorUid: string, targetUid: string): Promise<boolean> => {
-    try {
-        const userRef = doc(db, 'users', targetUid);
-        const snapshot = await getDoc(userRef);
-        if (snapshot.exists()) {
-            const data = snapshot.data() as User;
-            return data.mutedCreators?.includes(creatorUid) || false;
-        }
-        return false;
-    } catch (error) {
-        console.error("Error checking mute status:", error);
-        return false;
-    }
-};
 
 /**
  * Forgives an ACTIVE debt (Marks as FORGIVEN/PAID).
@@ -1537,25 +1458,7 @@ export const updateDebt = async (debtId: string, data: Partial<Debt>, actorId?: 
                 }
             };
 
-            // BUMP MECHANISM: Check for recovery from AUTO_HIDDEN
-            if (currentDebt.status === 'AUTO_HIDDEN' || currentDebt.isMuted) {
-                const creatorId = currentDebt.createdBy;
-                const isLender = currentDebt.lenderId === creatorId;
-                const targetUserId = isLender ? currentDebt.borrowerId : currentDebt.lenderId;
 
-                if (targetUserId && targetUserId.length > 20) {
-                    const targetRef = doc(db, 'users', targetUserId);
-                    const targetSnap = await transaction.get(targetRef);
-                    if (targetSnap.exists()) {
-                        const targetData = targetSnap.data() as User;
-                        const isStillMuted = targetData.mutedCreators?.includes(creatorId);
-                        if (!isStillMuted) {
-                            updates.status = 'ACTIVE';
-                            updates.isMuted = false;
-                        }
-                    }
-                }
-            }
 
             transaction.update(debtRef, updates);
 
@@ -1777,7 +1680,7 @@ export const autoLinkSystemContacts = async (
                 if (!userSnap.exists()) continue;
 
                 const userData = userSnap.data() as User;
-                const userPhone = userData.primaryPhoneNumber || userData.phoneNumber;
+                const userPhone = userData.phoneNumber;
 
                 if (userPhone) {
                     const cleanUserPhone = cleanPhoneNumber(userPhone);

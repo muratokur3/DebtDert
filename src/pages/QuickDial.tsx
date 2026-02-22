@@ -29,7 +29,7 @@ export const QuickDial = () => {
     // Note: searchResults are Contacts (have phoneNumber). foundUser is User (has phoneNumber).
     // Simple check:
     if (foundUser) {
-        const userPhone = foundUser.primaryPhoneNumber || foundUser.phoneNumbers?.[0] || foundUser.phoneNumber || '';
+        const userPhone = foundUser.phoneNumber || '';
         const isAlreadyInContacts = searchResults.some(c =>
             c.phoneNumber.replace(/\D/g, '') === userPhone.replace(/\D/g, '')
         );
@@ -154,7 +154,7 @@ export const QuickDial = () => {
                         displayMatches.map((match, idx) => {
                             const isContact = 'name' in match;
                             const name = isContact ? (match as Contact).name : (match as User).displayName;
-                            const phone = 'phoneNumber' in match ? (match as Contact).phoneNumber : ((match as User).primaryPhoneNumber || (match as User).phoneNumbers?.[0] || (match as User).phoneNumber || '');
+                            const phone = 'phoneNumber' in match ? (match as Contact).phoneNumber : ((match as User).phoneNumber || '');
                             const photo = 'photoURL' in match ? (match as any).photoURL : undefined;
 
                             return (

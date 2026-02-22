@@ -119,13 +119,13 @@ export const Settings = () => {
                             uid={user?.uid}
                             size="xl"
                             className="w-24 h-24 mb-4 shadow-md"
-                            status={user?.phoneNumbers && user.phoneNumbers.length > 0 ? 'system' : 'none'}
+                            status={user?.phoneNumber ? 'system' : 'none'}
                         />
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                             {user?.displayName || 'Kullanıcı'}
                         </h2>
                         <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
-                            {user?.primaryPhoneNumber || user?.phoneNumber || ''}
+                            {user?.phoneNumber || ''}
                         </p>
                     </div>
 
@@ -134,7 +134,7 @@ export const Settings = () => {
                         <SettingsRow
                             icon={User}
                             title="Hesap"
-                            description="Numaralar, E-posta, Güvenlik"
+                            description="Telefon numarası, Oturumlar ve Güvenlik"
                             onClick={() => navigate('/settings/account')}
                         />
                         <SettingsRow

@@ -63,7 +63,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
 
     const initialPhone = targetUser
         ? ('uid' in targetUser
-            ? (targetUser.primaryPhoneNumber || targetUser.phoneNumbers?.[0] || targetUser.phoneNumber || '')
+            ? (targetUser.phoneNumber || '')
             : targetUser.phoneNumber)
         : (initialPhoneNumber || '');
 
@@ -187,7 +187,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                              const snap = await getDoc(doc(db, 'users', targetId));
                              if (snap.exists()) {
                                  const u = snap.data() as User;
-                                 const realPhone = u.primaryPhoneNumber || u.phoneNumber || '';
+                                 const realPhone = u.phoneNumber || '';
                                  if (realPhone) {
                                      setPhoneNumber(realPhone);
                                  }
@@ -313,7 +313,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                     if (userDoc.exists()) {
                         const userData = userDoc.data() as User;
                         setFoundUser(userData);
-                        setPhoneNumber(userData.primaryPhoneNumber || userData.phoneNumbers?.[0] || userData.phoneNumber || '');
+                        setPhoneNumber(userData.phoneNumber || '');
                         setBorrowerName(userData.displayName || '');
                         setStep('DETAILS');
                         setIsResolvingInitial(false);
@@ -380,7 +380,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
 
     const handleSelectUser = (sysUser: User) => {
         setFoundUser(sysUser);
-        setPhoneNumber(sysUser.primaryPhoneNumber || sysUser.phoneNumbers?.[0] || sysUser.phoneNumber || '');
+        setPhoneNumber(sysUser.phoneNumber || '');
         setBorrowerName(sysUser.displayName || '');
         setSearchResults([]);
         setFoundContact(null);
@@ -744,7 +744,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                                                     </div>
                                                 </div>
                                                 <div className="text-right">
-                                                    <p className="text-xs text-text-secondary">{formatPhoneForDisplay((foundUser as User).primaryPhoneNumber || (foundUser as User).phoneNumber || '')}</p>
+                                                    <p className="text-xs text-text-secondary">{formatPhoneForDisplay((foundUser as User).phoneNumber || '')}</p>
                                                 </div>
                                             </div>
                                         )}

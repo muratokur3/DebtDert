@@ -84,8 +84,8 @@ export const ensureUserDocument = async (user: User, customDisplayName?: string)
             const userData = userDoc.data();
             
             // If schema migration needed (converting from array to single string)
-            if (userData.phoneNumbers || userData.primaryPhoneNumber || customDisplayName) {
-                const existingPhone = userData.phoneNumber || userData.primaryPhoneNumber || (userData.phoneNumbers && userData.phoneNumbers[0]) || clean;
+            if (customDisplayName) {
+                const existingPhone = userData.phoneNumber || clean;
                 
                 await updateDoc(userDocRef, {
                     displayName: customDisplayName || userData.displayName,

@@ -149,7 +149,7 @@ export const ContactModal: React.FC<ContactModalProps> = ({
             let linkId: string | undefined = undefined;
             if (suggestedUser) {
                const cleanInput = cleanPhone(phone);
-               if (cleanInput && (suggestedUser.phoneNumber === cleanInput || suggestedUser.primaryPhoneNumber === cleanInput)) {
+               if (cleanInput && (suggestedUser.phoneNumber === cleanInput)) {
                    linkId = suggestedUser.uid;
                }
             }

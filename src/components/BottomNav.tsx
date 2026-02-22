@@ -230,7 +230,7 @@ export const BottomNav = () => {
                 isOpen={showDebtModal}
                 onClose={() => setShowDebtModal(false)}
                 onSubmit={handleCreateDebtSubmit}
-                initialPhoneNumber={contextTargetUser ? ('phoneNumber' in contextTargetUser ? contextTargetUser.phoneNumber : (contextTargetUser as User).primaryPhoneNumber) : (personId || undefined)}
+                initialPhoneNumber={contextTargetUser ? ('phoneNumber' in contextTargetUser ? contextTargetUser.phoneNumber : (contextTargetUser as User).phoneNumber) : (personId || undefined)}
                 initialName={contextPersonName}
                 targetUser={contextTargetUser}
             />

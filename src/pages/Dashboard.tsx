@@ -71,7 +71,7 @@ export const Dashboard = () => {
 
     // GHOST USER PROTOCOL: Background Claiming & Normalization
     useEffect(() => {
-        const phone = user?.primaryPhoneNumber || user?.phoneNumber;
+        const phone = user?.phoneNumber;
         if (user?.uid && phone) {
             // 1. Claim Legacy Debts (Multi-format)
             // Note: Firestore real-time listeners will automatically update when debts are claimed
@@ -86,7 +86,7 @@ export const Dashboard = () => {
             // 2. Normalize Address Book (One-time background fix)
             import('../services/db').then(m => m.normalizeAllUserContacts(user.uid as string));
         }
-    }, [user?.uid, user?.primaryPhoneNumber, user?.phoneNumber]);
+    }, [user?.uid, user?.phoneNumber]);
 
 
 

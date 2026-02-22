@@ -4,13 +4,16 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X, ArrowUpRight, ArrowDownLeft, CheckCircle2 } from 'lucide-react';
+import { X, ArrowUpRight, ArrowDownLeft, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Toggle } from './Toggle';
 import { addLedgerTransaction, getOrCreateLedger } from '../services/transactionService';
 import { getDebtsBetweenParticipants, makePayment } from '../services/db';
+import { formatAmountToWords } from '../utils/format';
 import { useAuth } from '../hooks/useAuth';
 import { useModal } from '../context/ModalContext';
 import clsx from 'clsx';
-import type { TransactionDirection } from '../types';
+import type { TransactionDirection, Transaction, GoldDetail } from '../types';
+import { GOLD_TYPES, GOLD_CARATS } from '../utils/goldConstants';
 
 interface QuickTransactionModalProps {
     isOpen: boolean;
@@ -38,6 +41,18 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
     const { showAlert } = useModal();
 
     const [amount, setAmount] = useState('');
+    const [currency, setCurrency] = useState('TRY');
+
+    // Gold State
+    const [goldType, setGoldType] = useState<string>('GRAM');
+    const [goldCarat, setGoldCarat] = useState<number>(24);
+    const [goldWeight, setGoldWeight] = useState<string>('');
+    const [goldQuantity, setGoldQuantity] = useState<string>('');
+
+    // Custom Rate
+    const [manualRate, setManualRate] = useState('');
+    const [useManualRate, setUseManualRate] = useState(false);
+
     const [description, setDescription] = useState('');
     const [direction, setDirection] = useState<TransactionDirection>('OUTGOING');
     const [submitting, setSubmitting] = useState(false);
@@ -158,12 +173,29 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
 
             console.log('Adding transaction to ledger:', targetLedgerId);
 
+            let goldDetail: Transaction['goldDetail'] | undefined;
+            if (currency === 'GOLD') {
+                const typeData = GOLD_TYPES.find(t => t.id === goldType);
+                goldDetail = {
+                    type: goldType as GoldDetail['type'],
+                    label: typeData?.label || goldType,
+                    carat: typeData?.hasCarat ? goldCarat : undefined,
+                    weight: typeData?.hasWeight ? parseFloat(goldWeight) : undefined,
+                    quantity: typeData?.hasQuantity ? parseFloat(goldQuantity) : undefined
+                };
+            }
+
+            const customRate = useManualRate ? parseFloat(manualRate) : undefined;
+
             await addLedgerTransaction(
                 targetLedgerId,
                 user.uid,
                 numAmount,
                 direction,
-                description.trim() || undefined
+                description.trim() || undefined,
+                currency,
+                goldDetail,
+                customRate
             );
 
             showAlert("Başarılı", "İşlem eklendi.", "success");
@@ -231,20 +263,106 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                             </button>
                         </div>
 
-                        {/* Amount */}
-                        <div>
-                            <label className="block text-sm font-medium text-text-secondary mb-2">Tutar (₺)</label>
-                            <input
-                                type="text"
-                                inputMode="decimal"
-                                value={amount}
-                                onChange={(e) => setAmount(e.target.value)}
-                                placeholder="0"
-                                className="w-full px-4 py-4 text-3xl font-bold text-center rounded-xl border border-slate-200 dark:border-slate-700 bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none"
-                                required
-                                autoFocus
-                            />
+                        {/* Amount & Currency */}
+                        <div className="flex gap-3">
+                            <div className="flex-1">
+                                <label className="block text-sm font-medium text-text-secondary mb-2">Tutar</label>
+                                <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={amount}
+                                    onChange={(e) => setAmount(e.target.value)}
+                                    placeholder="0"
+                                    className="w-full px-4 py-4 text-3xl font-bold text-center rounded-xl border border-slate-200 dark:border-slate-700 bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none"
+                                    required
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="w-24 flex flex-col">
+                                <label className="block text-sm font-medium text-text-secondary mb-2">Birim</label>
+                                <select
+                                    value={currency}
+                                    onChange={(e) => setCurrency(e.target.value)}
+                                    className="w-full px-3 py-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-background text-text-primary focus:ring-2 focus:ring-primary outline-none font-bold h-full"
+                                >
+                                    <option value="TRY">₺</option>
+                                    <option value="USD">$</option>
+                                    <option value="EUR">€</option>
+                                    <option value="GOLD">Altın</option>
+                                </select>
+                            </div>
                         </div>
+                        {amount && (
+                            <p className="text-[10px] text-text-secondary italic text-left animate-in fade-in slide-in-from-top-1 px-1 mt-0.5">
+                                {formatAmountToWords(amount, currency, currency === 'GOLD' ? { type: goldType as GoldDetail['type'], label: '' } : undefined)}
+                            </p>
+                        )}
+
+                        {/* Gold Sub-selection */}
+                        {currency === 'GOLD' && (
+                            <div className="p-4 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800 space-y-3 animate-in fade-in slide-in-from-top-2">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase">Altın Türü</label>
+                                    <select
+                                        value={goldType}
+                                        onChange={(e) => setGoldType(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-800 text-sm font-semibold text-text-primary focus:ring-2 focus:ring-amber-500 outline-none"
+                                    >
+                                        {GOLD_TYPES.map(t => (
+                                            <option key={t.id} value={t.id}>{t.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    {GOLD_TYPES.find(t => t.id === goldType)?.hasCarat && (
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase">Ayar</label>
+                                            <select
+                                                value={goldCarat}
+                                                onChange={(e) => setGoldCarat(Number(e.target.value))}
+                                                className="w-full px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-800 text-sm font-semibold text-text-primary focus:ring-2 focus:ring-amber-500 outline-none"
+                                            >
+                                                {GOLD_CARATS.map(c => (
+                                                    <option key={c.value} value={c.value}>{c.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                    {GOLD_TYPES.find(t => t.id === goldType)?.hasWeight && (
+                                        <div className={clsx(!GOLD_TYPES.find(t => t.id === goldType)?.hasCarat && "col-span-2")}>
+                                            <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase">Gram</label>
+                                            <input
+                                                type="number"
+                                                value={goldWeight}
+                                                onChange={(e) => {
+                                                    setGoldWeight(e.target.value);
+                                                    setAmount(e.target.value);
+                                                }}
+                                                placeholder="Örn: 10.5"
+                                                step="0.01"
+                                                className="w-full px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-800 text-sm font-bold text-text-primary focus:ring-2 focus:ring-amber-500 outline-none"
+                                            />
+                                        </div>
+                                    )}
+                                    {GOLD_TYPES.find(t => t.id === goldType)?.hasQuantity && (
+                                        <div className="col-span-2">
+                                            <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase">Adet</label>
+                                            <input
+                                                type="number"
+                                                value={goldQuantity}
+                                                onChange={(e) => {
+                                                    setGoldQuantity(e.target.value);
+                                                    setAmount(e.target.value);
+                                                }}
+                                                placeholder="Örn: 2"
+                                                className="w-full px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-800 text-sm font-bold text-text-primary focus:ring-2 focus:ring-amber-500 outline-none"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Smart Match Suggestion */}
                         {matchedDebt && (
@@ -265,6 +383,35 @@ export const QuickTransactionModal: React.FC<QuickTransactionModalProps> = ({
                                         </button>
                                     </div>
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Custom Rate Input */}
+                        {currency !== 'TRY' && (
+                            <div className="p-3 bg-orange-50 dark:bg-orange-900/10 rounded-xl border border-orange-200 dark:border-orange-800 animate-in fade-in transition-all">
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-xs font-bold text-orange-700 dark:text-orange-300">Özel Kur Kullan</label>
+                                    <Toggle
+                                        checked={useManualRate}
+                                        onChange={setUseManualRate}
+                                    />
+                                </div>
+                                {useManualRate && (
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm text-text-secondary">
+                                            1 {currency === 'GOLD' ? (GOLD_TYPES.find(t => t.id === goldType)?.label || 'Altın') : currency} =
+                                        </span>
+                                        <input
+                                            type="number"
+                                            value={manualRate}
+                                            onChange={(e) => setManualRate(e.target.value)}
+                                            step="0.01"
+                                            className="flex-1 px-3 py-2 rounded-lg border border-orange-300 dark:border-orange-700 bg-white dark:bg-slate-800 text-sm font-bold text-text-primary outline-none focus:ring-1 focus:ring-orange-500"
+                                            placeholder="Örn: 34.50"
+                                        />
+                                        <span className="text-sm text-text-secondary">TRY</span>
+                                    </div>
+                                )}
                             </div>
                         )}
 

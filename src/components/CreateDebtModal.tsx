@@ -7,7 +7,7 @@ import { searchUserByPhone, searchContacts, createDebt, updateDebtHardReset } fr
 import { getOrCreateLedger, addLedgerTransaction } from '../services/transactionService';
 import { formatCurrency, formatAmountToWords } from '../utils/format';
 import { formatPhoneForDisplay, cleanPhone } from '../utils/phoneUtils';
-import type { User, Contact, Installment, Debt } from '../types';
+import type { User, Contact, Installment, Debt, GoldDetail } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { useContactSync } from '../hooks/useContactSync';
 import { Toggle } from './Toggle';
@@ -421,7 +421,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
             if (currency === 'GOLD') {
                 const typeData = GOLD_TYPES.find(t => t.id === goldType);
                 goldDetail = {
-                    type: goldType as any,
+                    type: goldType as GoldDetail['type'],
                     label: typeData?.label || goldType,
                     carat: typeData?.hasCarat ? goldCarat : undefined,
                     weight: typeData?.hasWeight ? parseFloat(goldWeight) : undefined,
@@ -805,7 +805,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                             )}
                             {amount && (
                                 <p className="text-[10px] text-text-secondary italic text-left animate-in fade-in slide-in-from-top-1 px-1 mt-0.5">
-                                    {formatAmountToWords(amount, currency, currency === 'GOLD' ? { type: goldType as any, label: '' } : undefined)}
+                                    {formatAmountToWords(amount, currency, currency === 'GOLD' ? { type: goldType as GoldDetail['type'], label: '' } : undefined)}
                                 </p>
                             )}
                         </div>

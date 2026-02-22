@@ -5,6 +5,10 @@ import { Timestamp, deleteField } from 'firebase/firestore';
 import { useModal } from '../context/ModalContext';
 import { formatAmountToWords } from '../utils/format';
 import { AmountInput } from './AmountInput';
+import type { Debt, GoldDetail } from '../types';
+import { GOLD_TYPES, GOLD_CARATS } from '../utils/goldConstants';
+import clsx from 'clsx';
+import { Toggle } from './Toggle';
 
 interface EditDebtModalProps {
     isOpen: boolean;
@@ -16,6 +20,17 @@ interface EditDebtModalProps {
 export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, debt, onUpdate }) => {
     const [amount, setAmount] = useState('');
     const [currency, setCurrency] = useState('TRY');
+
+    // Gold State
+    const [goldType, setGoldType] = useState<string>('GRAM');
+    const [goldCarat, setGoldCarat] = useState<number>(24);
+    const [goldWeight, setGoldWeight] = useState<string>('');
+    const [goldQuantity, setGoldQuantity] = useState<string>('');
+
+    // Custom Rate
+    const [manualRate, setManualRate] = useState('');
+    const [useManualRate, setUseManualRate] = useState(false);
+
     const [note, setNote] = useState('');
     const [dueDate, setDueDate] = useState('');
     const [loading, setLoading] = useState(false);
@@ -28,6 +43,23 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
             setAmount(debt.originalAmount.toString());
             setCurrency(debt.currency);
             setNote(debt.note || '');
+
+            // Gold Detail Init
+            if (debt.currency === 'GOLD' && debt.goldDetail) {
+                setGoldType(debt.goldDetail.type);
+                setGoldCarat(debt.goldDetail.carat || 24);
+                setGoldWeight(debt.goldDetail.weight?.toString() || '');
+                setGoldQuantity(debt.goldDetail.quantity?.toString() || '');
+            }
+
+            if (debt.customExchangeRate) {
+                setManualRate(debt.customExchangeRate.toString());
+                setUseManualRate(true);
+            } else {
+                setManualRate('');
+                setUseManualRate(false);
+            }
+
             if (debt.dueDate) {
                 setDueDate(debt.dueDate.toDate().toISOString().split('T')[0]);
             } else {
@@ -46,6 +78,13 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                 note
             };
 
+            const customRate = useManualRate ? parseFloat(manualRate) : undefined;
+            if (customRate) {
+                updates.customExchangeRate = customRate;
+            } else if (debt.customExchangeRate) {
+                updates.customExchangeRate = deleteField() as any;
+            }
+
             if (dueDate) {
                 updates.dueDate = Timestamp.fromDate(new Date(dueDate));
             } else {
@@ -59,6 +98,19 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                     updates.originalAmount = numAmount;
                     updates.remainingAmount = numAmount; // Reset remaining if no payments
                     updates.currency = currency;
+
+                    if (currency === 'GOLD') {
+                        const typeData = GOLD_TYPES.find(t => t.id === goldType);
+                        updates.goldDetail = {
+                            type: goldType as GoldDetail['type'],
+                            label: typeData?.label || goldType,
+                            carat: typeData?.hasCarat ? goldCarat : undefined,
+                            weight: typeData?.hasWeight ? parseFloat(goldWeight) : undefined,
+                            quantity: typeData?.hasQuantity ? parseFloat(goldQuantity) : undefined
+                        };
+                    } else if (debt.goldDetail) {
+                        updates.goldDetail = deleteField() as any;
+                    }
                 }
             }
 
@@ -115,16 +167,111 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                                     <option value="TRY">₺</option>
                                     <option value="USD">$</option>
                                     <option value="EUR">€</option>
-                                    <option value="GOLD">Gr</option>
+                                    <option value="GOLD">Altın</option>
                                 </select>
                             </div>
                         </div>
                         {amount && (
                             <p className="text-[10px] text-text-secondary italic text-left animate-in fade-in slide-in-from-top-1 px-1 mt-0.5">
-                                {formatAmountToWords(amount, currency)}
+                                {formatAmountToWords(amount, currency, currency === 'GOLD' ? { type: goldType as GoldDetail['type'], label: '' } : undefined)}
                             </p>
                         )}
+
+                        {/* Gold Sub-selection */}
+                        {currency === 'GOLD' && !hasPayments && (
+                            <div className="p-4 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800 space-y-3 animate-in fade-in slide-in-from-top-2 mt-2">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase">Altın Türü</label>
+                                    <select
+                                        value={goldType}
+                                        onChange={(e) => setGoldType(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-800 text-sm font-semibold text-text-primary focus:ring-2 focus:ring-amber-500 outline-none"
+                                    >
+                                        {GOLD_TYPES.map(t => (
+                                            <option key={t.id} value={t.id}>{t.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    {GOLD_TYPES.find(t => t.id === goldType)?.hasCarat && (
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase">Ayar</label>
+                                            <select
+                                                value={goldCarat}
+                                                onChange={(e) => setGoldCarat(Number(e.target.value))}
+                                                className="w-full px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-800 text-sm font-semibold text-text-primary focus:ring-2 focus:ring-amber-500 outline-none"
+                                            >
+                                                {GOLD_CARATS.map(c => (
+                                                    <option key={c.value} value={c.value}>{c.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                    {GOLD_TYPES.find(t => t.id === goldType)?.hasWeight && (
+                                        <div className={clsx(!GOLD_TYPES.find(t => t.id === goldType)?.hasCarat && "col-span-2")}>
+                                            <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase">Gram</label>
+                                            <input
+                                                type="number"
+                                                value={goldWeight}
+                                                onChange={(e) => {
+                                                    setGoldWeight(e.target.value);
+                                                    setAmount(e.target.value);
+                                                }}
+                                                placeholder="Örn: 10.5"
+                                                step="0.01"
+                                                className="w-full px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-800 text-sm font-bold text-text-primary focus:ring-2 focus:ring-amber-500 outline-none"
+                                            />
+                                        </div>
+                                    )}
+                                    {GOLD_TYPES.find(t => t.id === goldType)?.hasQuantity && (
+                                        <div className="col-span-2">
+                                            <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase">Adet</label>
+                                            <input
+                                                type="number"
+                                                value={goldQuantity}
+                                                onChange={(e) => {
+                                                    setGoldQuantity(e.target.value);
+                                                    setAmount(e.target.value);
+                                                }}
+                                                placeholder="Örn: 2"
+                                                className="w-full px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-800 text-sm font-bold text-text-primary focus:ring-2 focus:ring-amber-500 outline-none"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
+
+                    {/* Custom Rate Input */}
+                    {currency !== 'TRY' && (
+                        <div className="p-3 bg-orange-50 dark:bg-orange-900/10 rounded-xl border border-orange-200 dark:border-orange-800 animate-in fade-in transition-all">
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="text-xs font-bold text-orange-700 dark:text-orange-300">Özel Kur Kullan</label>
+                                <Toggle
+                                    checked={useManualRate}
+                                    onChange={setUseManualRate}
+                                />
+                            </div>
+                            {useManualRate && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-text-secondary">
+                                        1 {currency === 'GOLD' ? (GOLD_TYPES.find(t => t.id === goldType)?.label || 'Altın') : currency} =
+                                    </span>
+                                    <input
+                                        type="number"
+                                        value={manualRate}
+                                        onChange={(e) => setManualRate(e.target.value)}
+                                        step="0.01"
+                                        className="flex-1 px-3 py-2 rounded-lg border border-orange-300 dark:border-orange-700 bg-white dark:bg-slate-800 text-sm font-bold text-text-primary outline-none focus:ring-1 focus:ring-orange-500"
+                                        placeholder="Örn: 34.50"
+                                    />
+                                    <span className="text-sm text-text-secondary">TRY</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <div>
                         <label className="block text-sm font-medium text-text-secondary mb-1">Vade Tarihi</label>

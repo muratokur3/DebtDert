@@ -71,10 +71,12 @@ export const notificationService = {
                 createdAt: serverTimestamp()
             };
 
-            await addDoc(notificationsRef, data);
+            console.log(`[NotificationService] Attempting to add notification for ${params.userId}`, data);
+            const docRef = await addDoc(notificationsRef, data);
+            console.log(`[NotificationService] Notification added successfully: ${docRef.id}`);
             return true;
         } catch (error) {
-            console.error('Failed to add notification to Firestore:', error);
+            console.error('[NotificationService] Failed to add notification to Firestore:', error);
             return false;
         }
     },

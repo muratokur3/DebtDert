@@ -29,17 +29,19 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     // Toast logic: Show toast for new, unshown notifications
     useEffect(() => {
         if (notifications.length > 0) {
+            console.log(`[NotificationContext] received ${notifications.length} notifications`);
             // Get already toasted IDs from current session to prevent double toast
             const toastedIds = JSON.parse(sessionStorage.getItem('toasted_notif_ids') || '[]');
 
             // Find unread and unshown notifications that haven't been toasted in this session
             const unshown = notifications.filter(n => !n.isShown && !n.isRead && !toastedIds.includes(n.id));
-
             if (unshown.length > 0) {
+                console.log(`[NotificationContext] ${unshown.length} unshown notifications found. Newest:`, unshown[0]);
+                
                 // Show the most recent one
                 const newest = unshown[0];
 
-                if (!activeToast || activeToast.id !== newest.id) {
+                if (!activeToast || (newest && activeToast.id !== newest.id)) {
                     setActiveToast(newest);
 
                     // Mark as toasted in session

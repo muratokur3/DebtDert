@@ -51,37 +51,40 @@ export const NotificationToast: React.FC<NotificationToastProps> = ({ notificati
 
     return (
         <AnimatePresence>
-            <motion.div
-                initial={{ opacity: 0, y: -20, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                className="fixed top-4 left-4 right-4 max-w-sm mx-auto z-[9999]"
-            >
-                <div className={clsx(
-                    'bg-surface border rounded-2xl p-4 shadow-xl flex items-start gap-3 backdrop-blur-md',
-                    typeStyles[notification.type]
-                )}>
-                    <div className="flex-shrink-0 mt-0.5">
-                        {iconMap[notification.type]}
-                    </div>
+            {notification && (
+                <motion.div
+                    key={notification.id}
+                    initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                    className="fixed top-4 left-4 right-4 max-w-sm mx-auto z-[9999]"
+                >
+                    <div className={clsx(
+                        'bg-surface border rounded-2xl p-4 shadow-xl flex items-start gap-3 backdrop-blur-md',
+                        typeStyles[notification.type]
+                    )}>
+                        <div className="flex-shrink-0 mt-0.5">
+                            {iconMap[notification.type]}
+                        </div>
 
-                    <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-text-primary text-sm leading-tight">
-                            {titleMap[notification.type]}
-                        </h3>
-                        <p className="text-text-secondary text-xs mt-1 line-clamp-2 leading-relaxed">
-                            {notification.message}
-                        </p>
-                    </div>
+                        <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-text-primary text-sm leading-tight">
+                                {titleMap[notification.type]}
+                            </h3>
+                            <p className="text-text-secondary text-xs mt-1 line-clamp-2 leading-relaxed">
+                                {notification.message}
+                            </p>
+                        </div>
 
-                    <button
-                        onClick={onClose}
-                        className="flex-shrink-0 -mt-1 -mr-1 p-1 text-text-secondary hover:text-text-primary hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-all"
-                    >
-                        <X size={16} />
-                    </button>
-                </div>
-            </motion.div>
+                        <button
+                            onClick={onClose}
+                            className="flex-shrink-0 -mt-1 -mr-1 p-1 text-text-secondary hover:text-text-primary hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-all"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                </motion.div>
+            )}
         </AnimatePresence>
     );
 };

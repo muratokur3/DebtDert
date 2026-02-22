@@ -8,7 +8,8 @@ import {
     getDocs,
     writeBatch,
     Timestamp,
-    serverTimestamp
+    serverTimestamp,
+    deleteDoc
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -44,18 +45,28 @@ export const notificationService = {
         currency?: string;
         debtId?: string;
     }) {
-        if (!params.userId || params.userId === params.actorId) return;
+        // Validation: Must have recipient and sender, and they must be different
+        if (!params.userId || !params.actorId || params.userId === params.actorId) {
+            console.warn("Skipping notification: Invalid IDs", { userId: params.userId, actorId: params.actorId });
+            return;
+        }
 
         try {
             const notificationsRef = collection(db, 'notifications');
             await addDoc(notificationsRef, {
-                ...params,
+                userId: params.userId,
+                actorId: params.actorId,
+                type: params.type,
+                message: params.message,
+                amount: params.amount ?? null,
+                currency: params.currency ?? null,
+                debtId: params.debtId ?? null,
                 isRead: false,
                 isShown: false,
                 createdAt: serverTimestamp()
             });
         } catch (error) {
-            console.error('Failed to add notification:', error);
+            console.error('Failed to add notification to Firestore:', error);
         }
     },
 
@@ -85,13 +96,15 @@ export const notificationService = {
                 where('isRead', '==', false)
             );
             const snapshot = await getDocs(q);
+            if (snapshot.empty) return;
+
             const batch = writeBatch(db);
-            snapshot.forEach(doc => {
-                batch.update(doc.ref, { isRead: true });
+            snapshot.forEach(docSnap => {
+                batch.update(docSnap.ref, { isRead: true });
             });
             await batch.commit();
         } catch (error) {
-            console.error('Failed to mark all as read:', error);
+            console.error('Failed to mark all notifications as read:', error);
         }
     },
 
@@ -99,9 +112,11 @@ export const notificationService = {
         try {
             const q = query(collection(db, 'notifications'), where('userId', '==', userId));
             const snapshot = await getDocs(q);
+            if (snapshot.empty) return;
+
             const batch = writeBatch(db);
-            snapshot.forEach(doc => {
-                batch.delete(doc.ref);
+            snapshot.forEach(docSnap => {
+                batch.delete(docSnap.ref);
             });
             await batch.commit();
         } catch (error) {
@@ -112,8 +127,6 @@ export const notificationService = {
     async deleteNotification(notificationId: string) {
         try {
             const notifRef = doc(db, 'notifications', notificationId);
-            // We'll do a hard delete as requested for clear data
-            const { deleteDoc } = await import('firebase/firestore');
             await deleteDoc(notifRef);
         } catch (error) {
             console.error('Failed to delete notification:', error);

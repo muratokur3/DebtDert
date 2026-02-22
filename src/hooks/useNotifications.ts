@@ -4,7 +4,6 @@ import {
     collection,
     query,
     where,
-    orderBy,
     onSnapshot,
     Timestamp
 } from 'firebase/firestore';
@@ -18,6 +17,7 @@ export const useNotifications = () => {
 
     useEffect(() => {
         if (!user) {
+            // Deferred clear to avoid render cycle errors
             const timer = setTimeout(() => {
                 setNotifications([]);
                 setLoading(false);
@@ -25,9 +25,11 @@ export const useNotifications = () => {
             return () => clearTimeout(timer);
         }
 
+        setLoading(true);
+
         // Real-time listener for user's notifications
         const notificationsRef = collection(db, 'notifications');
-        // Note: Removed orderBy to avoid index requirement, sorting in memory
+        // No orderBy to avoid index requirement, sorting in memory
         const q = query(
             notificationsRef,
             where('userId', '==', user.uid)
@@ -35,35 +37,46 @@ export const useNotifications = () => {
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const notifs: Notification[] = [];
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                if (data.createdAt) {
-                    notifs.push({
-                        id: doc.id,
-                        ...data,
-                        createdAt: data.createdAt as Timestamp
-                    } as Notification);
-                }
+
+            snapshot.forEach(docSnap => {
+                const data = docSnap.data();
+
+                // Handle null createdAt (local snapshot) - use current time as placeholder
+                const createdAt = data.createdAt || Timestamp.now();
+
+                notifs.push({
+                    id: docSnap.id,
+                    userId: data.userId,
+                    actorId: data.actorId,
+                    type: data.type,
+                    message: data.message,
+                    amount: data.amount,
+                    currency: data.currency,
+                    debtId: data.debtId,
+                    isRead: data.isRead,
+                    isShown: data.isShown,
+                    createdAt: createdAt as Timestamp
+                } as Notification);
             });
 
             // Sort in memory: newest first
             notifs.sort((a, b) => {
-                const timeA = a.createdAt?.toMillis?.() || 0;
-                const timeB = b.createdAt?.toMillis?.() || 0;
+                const timeA = a.createdAt?.toMillis() || Date.now();
+                const timeB = b.createdAt?.toMillis() || Date.now();
                 return timeB - timeA;
             });
 
             setNotifications(notifs);
             setLoading(false);
         }, (error) => {
-            console.error('Failed to fetch notifications:', error);
+            console.error('Failed to subscribe to notifications:', error);
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [user]);
+    }, [user?.uid]); // Only re-run if UID changes
 
-    // Backward compatibility for methods - these are mostly handled via Service/Context now
+    // Methods are now handled via Service/Context, these are for backward compat if any
     const markAsRead = () => {};
     const deleteNotification = () => {};
     const markAllAsRead = () => {};

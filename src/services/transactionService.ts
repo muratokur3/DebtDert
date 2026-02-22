@@ -200,10 +200,12 @@ export const addLedgerTransaction = async (
         if (ledgerSnap.exists()) {
             const data = ledgerSnap.data() as Debt;
             const otherId = data.participants.find(p => p !== userId);
+
+            // Resolve actor name - we should use the name of the person adding the transaction
             const actorName = userId === data.lenderId ? data.lenderName : data.borrowerName;
 
-            if (otherId) {
-                await notificationService.addNotification({
+            if (otherId && otherId.length > 20) {
+                notificationService.addNotification({
                     userId: otherId,
                     actorId: userId,
                     type: 'PAYMENT_MADE', // Use payment type for ledger transactions for simplicity
@@ -211,7 +213,7 @@ export const addLedgerTransaction = async (
                     amount,
                     currency,
                     debtId: ledgerId
-                });
+                }).catch(err => console.warn("Ledger notification failed:", err));
             }
         }
     } catch (notifError) {

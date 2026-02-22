@@ -242,10 +242,14 @@ export const Dashboard = () => {
                 displayName = fallbackName;
             }
 
+            // UNIFY CONTACTS: Use resolution.linkedUserId if available, otherwise use otherId.
+            // This ensures that debts associated with a phone number and a UID for the same person are grouped.
+            const unifiedContactId = resolution.linkedUserId || otherId;
+
             // Initialize contact entry if it doesn't exist
-            if (!contactMap.has(otherId)) {
+            if (!contactMap.has(unifiedContactId)) {
                 // Check in contactsMap for Activity Feed Metadata
-                const contactMeta = contactsMap.get(otherId) || contactsMap.get(resolution.linkedUserId || '');
+                const contactMeta = contactsMap.get(unifiedContactId) || contactsMap.get(otherId);
                 // Note: contactsMap is keyed by ID? No, useContacts implementation maps by ID.
                 // Assuming contactsMap is Map<string, Contact>.
                 // We prioritize metadata from Contact object.
@@ -260,7 +264,7 @@ export const Dashboard = () => {
                     if (contactMeta.hasUnreadActivity) unread = contactMeta.hasUnreadActivity;
                 }
 
-                contactMap.set(otherId, {
+                contactMap.set(unifiedContactId, {
                     name: displayName,
                     source: resolution.source, // Store the source
                     status: resolution.status, // Store the status
@@ -273,7 +277,7 @@ export const Dashboard = () => {
             } else {
                 // If we already have an entry, but current resolution is 'contact' and stored is NOT 'contact',
                 // we should upgrade the name/source because we found a better match (e.g. via lockedPhoneNumber hint)
-                const existing = contactMap.get(otherId)!;
+                const existing = contactMap.get(unifiedContactId)!;
                 if (existing.source !== 'contact' && resolution.source === 'contact') {
                     existing.name = resolution.displayName;
                     existing.source = 'contact';
@@ -282,7 +286,7 @@ export const Dashboard = () => {
                 }
             }
 
-            const contact = contactMap.get(otherId)!;
+            const contact = contactMap.get(unifiedContactId)!;
             const debtDate = d.createdAt.toDate();
 
             // Fallback Activity Calculation (if no metadata or newer debt exists found)
@@ -465,7 +469,7 @@ export const Dashboard = () => {
             el.removeEventListener('scroll', handleScroll);
             if (scrollTimer) clearTimeout(scrollTimer);
         };
-    }, []);
+    }, [loading]);
 
     const cardCount = useMemoResult.availableCurrencies.length + 1;
 

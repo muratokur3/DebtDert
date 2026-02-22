@@ -128,14 +128,9 @@ const confirmPhoneVerificationMock = async (phoneNumber: string, code: string) =
         const userDoc = await transaction.get(userRef);
         if (!userDoc.exists()) throw new Error("User not found");
 
-        const userData = userDoc.data();
-        const currentPhones = userData.phoneNumbers || [];
-
-        if (!currentPhones.includes(phoneNumber)) {
-            transaction.update(userRef, {
-                phoneNumbers: [...currentPhones, phoneNumber]
-            });
-        }
+        transaction.update(userRef, {
+            phoneNumber: phoneNumber
+        });
 
         const regRef = doc(db, REGISTRY_COLLECTION, phoneNumber);
         transaction.set(regRef, {

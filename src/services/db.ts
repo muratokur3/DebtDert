@@ -353,8 +353,8 @@ export const createDebt = async (
             if (uDoc.exists()) foundUserData = uDoc.data() as User;
         }
 
-        if (foundUserData && foundUserData.primaryPhoneNumber) {
-            contactPhone = foundUserData.primaryPhoneNumber;
+        if (foundUserData && foundUserData.phoneNumber) {
+            contactPhone = foundUserData.phoneNumber;
         }
         // 2. Fallback
         else if ((targetUserId.length <= 15 || targetUserId.startsWith('+')) && cleanTarget) {
@@ -817,7 +817,7 @@ export const searchUserByPhone = async (phoneNumber: string): Promise<User | nul
         try {
             const q = query(
                 collection(db, 'users'),
-                where('phoneNumbers', 'array-contains', cleanPhone),
+                where('phoneNumber', '==', cleanPhone),
                 limit(1)
             );
             const snapshot = await getDocs(q);

@@ -64,10 +64,8 @@ export const ensureUserDocument = async (user: User, customDisplayName?: string)
             // New User Initialization
             await setDoc(userDocRef, {
                 uid: user.uid,
-                phoneNumbers: clean ? [clean] : [],
-                primaryPhoneNumber: clean,
+                phoneNumber: clean,
                 displayName: customDisplayName || user.displayName || 'Kullanıcı',
-                authEmail: user.email || null,
                 createdAt: serverTimestamp()
             });
 
@@ -83,28 +81,27 @@ export const ensureUserDocument = async (user: User, customDisplayName?: string)
             }
         } else {
             // Existing User Maintenance
-            // Ensure they are in Registry (Self-Healing)
             const userData = userDoc.data();
-            const phones = userData.phoneNumbers || (userData.phoneNumber ? [userData.phoneNumber] : []);
-
-            // If schema migration needed
-            if (customDisplayName || (!userData.phoneNumbers && phones.length > 0)) {
+            
+            // If schema migration needed (converting from array to single string)
+            if (userData.phoneNumbers || userData.primaryPhoneNumber || customDisplayName) {
+                const existingPhone = userData.phoneNumber || userData.primaryPhoneNumber || (userData.phoneNumbers && userData.phoneNumbers[0]) || clean;
+                
                 await updateDoc(userDocRef, {
                     displayName: customDisplayName || userData.displayName,
-                    phoneNumbers: phones,
-                    primaryPhoneNumber: phones[0]
+                    phoneNumber: existingPhone
                 });
-            }
 
-            // Register all owned phones
-            for (const p of phones) {
-                const regRef = doc(db, 'phone_registry', p);
-                const regDoc = await getDoc(regRef);
-                if (!regDoc.exists()) {
-                    await setDoc(regRef, {
-                        uid: user.uid,
-                        verifiedAt: serverTimestamp()
-                    });
+                // Ensure the current number is in Registry (Self-Healing)
+                if (existingPhone) {
+                    const regRef = doc(db, 'phone_registry', existingPhone);
+                    const regDoc = await getDoc(regRef);
+                    if (!regDoc.exists()) {
+                        await setDoc(regRef, {
+                            uid: user.uid,
+                            verifiedAt: serverTimestamp()
+                        });
+                    }
                 }
             }
         }

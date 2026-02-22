@@ -6,7 +6,6 @@ import { Camera, Loader2, Save, ArrowLeft, ShieldCheck, ChevronRight } from 'luc
 import { Avatar } from '../components/Avatar';
 import { useNavigate } from 'react-router-dom';
 import { useModal } from '../context/ModalContext';
-import ManagePhones from '../components/ManagePhones';
 
 export const AccountSettings = () => {
     const { user } = useAuth();
@@ -137,14 +136,20 @@ export const AccountSettings = () => {
                                     </button>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-
-                    {/* Contact Info Section */}
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-slate-800">
-                        <SectionTitle title="İletişim Bilgileri" />
-                        <div className="space-y-6">
-                            <ManagePhones user={user} />
+                            
+                            {/* Read-only Phone Number */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 ml-1">
+                                    Telefon Numarası
+                                </label>
+                                <div className="px-4 py-3 rounded-xl bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-500 dark:text-gray-400 flex items-center justify-between">
+                                    <span>{user?.phoneNumber}</span>
+                                    <ShieldCheck size={16} className="text-green-500" />
+                                </div>
+                                <p className="text-[10px] text-gray-500 mt-1 ml-1 italic">
+                                    * Telefon numarası değiştirilemez.
+                                </p>
+                            </div>
                         </div>
                     </div>
 

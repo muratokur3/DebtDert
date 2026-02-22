@@ -20,9 +20,7 @@ export interface AmountHistory {
 
 export interface User {
     uid: string;
-    phoneNumber?: string; // @deprecated Use phoneNumbers array
-    phoneNumbers: string[]; // List of verified E.164 numbers
-    primaryPhoneNumber: string; // The main number for display/notifications
+    phoneNumber: string; // Verified E.164 number strictly (anchor)
     displayName: string;
     userType: UserType; // ✅ Unified naming
     businessName?: string; // For business accounts

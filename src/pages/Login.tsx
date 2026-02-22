@@ -7,6 +7,7 @@ import type { ConfirmationResult } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { startPhoneLogin, ensureUserDocument, finalizeUserRegistration } from '../services/auth';
 import { useModal } from '../context/ModalContext';
+import { useAuth } from '../hooks/useAuth';
 import clsx from 'clsx';
 import { PhoneInput } from '../components/PhoneInput';
 

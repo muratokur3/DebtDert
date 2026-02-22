@@ -287,12 +287,23 @@ export const createDebt = async (
     // CHECK PREFERENCES & FETCH USER DATA
     const counterpartyId = isLending ? borrowerId : lenderId;
 
+    // Resolve target UID for block checks
+    let blockCheckTargetUid = counterpartyId.length > 20 ? counterpartyId : null;
+    let blockCheckCleanPhone = '';
+    if (counterpartyId.length <= 15 || counterpartyId.startsWith('+')) {
+        blockCheckCleanPhone = cleanPhoneNumber(counterpartyId);
+        const targetSnap = await getDocs(query(collection(db, 'users'), where('phoneNumber', '==', blockCheckCleanPhone)));
+        if (!targetSnap.empty) {
+            blockCheckTargetUid = targetSnap.docs[0].id;
+        }
+    }
+
     // UNILATERAL LOGIC: Default to ACTIVE.
     let initialStatus: DebtStatus = 'ACTIVE';
 
     // BLOCK CHECK: If there is a block between the users, hide this debt from the counterpart.
-    if (counterpartyId.length > 20) {
-        const isBlocked = await checkBlockStatus(currentUserId, counterpartyId);
+    if (blockCheckTargetUid) {
+        const isBlocked = await checkBlockStatus(currentUserId, blockCheckTargetUid);
         if (isBlocked) {
             initialStatus = 'AUTO_HIDDEN';
         }
@@ -316,30 +327,18 @@ export const createDebt = async (
 
     // Determine Contact Phone for Locking & Auto-Add
     let contactPhone = '';
-    if (counterpartyId.length <= 15) {
-        // It's already a phone number
-        contactPhone = counterpartyId;
-    } else {
-        // It's a UID.
-        // 1. Try to get phone from actual user profile (we might need to fetch if not fetched above)
-        // We fetched targetSnap above if ID > 20.
-        let foundUserData: User | null = null;
-        if (counterpartyId.length > 20) {
-            // We fetched it for mute check?
-            // Let's re-use or re-fetch loosely. 
-            // Actually we can just query again or trust the previous block.
-            // Ideally we should have fetched user data once.
-            const uDoc = await getDoc(doc(db, 'users', counterpartyId));
-            if (uDoc.exists()) foundUserData = uDoc.data() as User;
+    let foundUserData: User | null = null;
+    
+    if (blockCheckTargetUid) {
+        // We know the UID, fetch user profile
+        const uDoc = await getDoc(doc(db, 'users', blockCheckTargetUid));
+        if (uDoc.exists()) {
+            foundUserData = uDoc.data() as User;
+            contactPhone = foundUserData.phoneNumber || blockCheckCleanPhone;
         }
-
-        if (foundUserData && foundUserData.phoneNumber) {
-            contactPhone = foundUserData.phoneNumber;
-        }
-        // 2. Fallback
-        else if ((targetUserId.length <= 15 || targetUserId.startsWith('+')) && cleanTarget) {
-            contactPhone = cleanTarget;
-        }
+    } else if (blockCheckCleanPhone) {
+        // No UID found, just use the clean phone
+        contactPhone = blockCheckCleanPhone;
     }
 
 
@@ -375,7 +374,8 @@ export const createDebt = async (
     const docRef = await addDoc(collection(db, 'debts'), cleanObject(debtData));
 
     // Create notification
-    const otherPartyId = currentUserId === borrowerId ? lenderId : borrowerId;
+    // We use the resolved UID to send notifications, not the raw counterpartyId
+    const otherPartyId = blockCheckTargetUid;
     const isLedger = debtData.type === 'LEDGER';
 
     // Recipient is the other party. Actor is Me.

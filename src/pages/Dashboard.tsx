@@ -14,11 +14,11 @@ import { PendingPaymentsModal } from '../components/PendingPaymentsModal';
 
 
 import { useTheme } from '../context/ThemeContext';
-import { fetchRates, convertToTRY, convertPureGoldToTRY, type CurrencyRates } from '../services/currency';
+import { fetchRates, convertToTRY, convertPureMetalToTRY, type CurrencyRates } from '../services/currency';
 import type { Debt } from '../types';
 import { SummaryCard } from '../components/SummaryCard';
 import { EditDebtModal } from '../components/EditDebtModal';
-import { getGoldType, calculatePureGoldWeight } from '../utils/goldConstants';
+import { getGoldType, calculatePureMetalWeight } from '../utils/goldConstants';
 import { updateDebt, addPayment, claimLegacyDebts } from '../services/db';
 import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
@@ -232,7 +232,7 @@ export const Dashboard = () => {
                 const baseCurr = isGold ? 'GOLD' : d.currency;
                 const goldDetail = d.goldDetail;
                 const pureWeight = (isGold && goldDetail)
-                    ? calculatePureGoldWeight(goldDetail.type, amount, goldDetail.weightPerUnit)
+                    ? calculatePureMetalWeight(goldDetail.type, amount, goldDetail.weightPerUnit)
                     : 0;
 
                 const customRates = d.customExchangeRate ? { [baseCurr]: d.customExchangeRate } : undefined;
@@ -656,13 +656,13 @@ export const Dashboard = () => {
                             const goldTypeData = goldType ? getGoldType(goldType) : undefined;
 
                             const net = (isToggled && rates)
-                                ? (isGold ? convertPureGoldToTRY(total.pureGoldNet, rates) : convertToTRY(total.net, baseCurr, rates))
+                                ? (isGold ? convertPureMetalToTRY(total.pureGoldNet, rates, 'GOLD') : convertToTRY(total.net, baseCurr, rates))
                                 : total.net;
                             const receivables = (isToggled && rates)
-                                ? (isGold ? convertPureGoldToTRY(total.pureGoldReceivables, rates) : convertToTRY(total.receivables, baseCurr, rates))
+                                ? (isGold ? convertPureMetalToTRY(total.pureGoldReceivables, rates, 'GOLD') : convertToTRY(total.receivables, baseCurr, rates))
                                 : total.receivables;
                             const payables = (isToggled && rates)
-                                ? (isGold ? convertPureGoldToTRY(total.pureGoldPayables, rates) : convertToTRY(total.payables, baseCurr, rates))
+                                ? (isGold ? convertPureMetalToTRY(total.pureGoldPayables, rates, 'GOLD') : convertToTRY(total.payables, baseCurr, rates))
                                 : total.payables;
 
                             return (

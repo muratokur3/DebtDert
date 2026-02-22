@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { X, Calendar, AlertCircle } from 'lucide-react';
 import { Timestamp, deleteField } from 'firebase/firestore';
 import { useModal } from '../context/ModalContext';
-import { formatAmountToWords, safeParseFloat } from '../utils/format';
+import { formatAmountToWords, safeParseFloat, CURRENCIES } from '../utils/format';
 import { AmountInput } from './AmountInput';
 import type { Debt, GoldDetail } from '../types';
-import { GOLD_TYPES, GOLD_CATEGORIES, BILEZIK_MODELS, TAKI_TYPES, GOLD_CARATS, getGoldType } from '../utils/goldConstants';
+import { GOLD_TYPES, GOLD_CATEGORIES, SILVER_CATEGORIES, BILEZIK_MODELS, TAKI_TYPES, GOLD_CARATS, getGoldType } from '../utils/goldConstants';
 import clsx from 'clsx';
 import { Toggle } from './Toggle';
-import { GoldSelectionFields } from './GoldSelectionFields';
+import { MetalSelectionFields } from './MetalSelectionFields';
 
 interface EditDebtModalProps {
     isOpen: boolean;
@@ -28,9 +28,9 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
     const [goldWeightPerUnit, setGoldWeightPerUnit] = useState<string>('');
     const [goldCustomCarat, setGoldCustomCarat] = useState<number>(22);
 
-    // Sync Gold Type ID for Bilezik specifically
+    // Sync Metal Type ID
     useEffect(() => {
-        if (goldCategory === 'BILEZIK') {
+        if (currency === 'GOLD' && goldCategory === 'BILEZIK') {
             const model = BILEZIK_MODELS.find(m => m.id === goldSubType);
             const effectiveCarat = model?.fixedCarat || goldCustomCarat;
             const targetType = `BILEZIK_${effectiveCarat}`;
@@ -39,8 +39,14 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
             } else {
                 setGoldTypeId('BILEZIK_22'); // Fallback
             }
+        } else if (currency === 'SILVER') {
+            if (goldCategory === 'SILVER') {
+                if (!goldTypeId.startsWith('SILVER_')) {
+                    setGoldTypeId('SILVER_999');
+                }
+            }
         }
-    }, [goldCategory, goldSubType, goldCustomCarat]);
+    }, [currency, goldCategory, goldSubType, goldCustomCarat, goldTypeId]);
 
     // Custom Rate
     const [manualRate, setManualRate] = useState('');
@@ -116,7 +122,7 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                     updates.remainingAmount = numAmount; // Reset remaining if no payments
                     updates.currency = currency;
 
-                    if (currency === 'GOLD') {
+                    if (currency === 'GOLD' || currency === 'SILVER') {
                         const typeData = getGoldType(goldTypeId);
                         const selectedModel = (goldCategory === 'BILEZIK' ? BILEZIK_MODELS : TAKI_TYPES).find(m => m.id === goldSubType);
 
@@ -179,20 +185,29 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                                 <label className="block text-sm font-medium text-text-secondary mb-1">Döviz</label>
                                 <select
                                     value={currency}
-                                    onChange={(e) => setCurrency(e.target.value)}
+                                    onChange={(e) => {
+                                        const newCurr = e.target.value;
+                                        setCurrency(newCurr);
+                                        if (newCurr === 'SILVER') {
+                                            setGoldCategory('SILVER');
+                                            setGoldTypeId('SILVER_999');
+                                        } else if (newCurr === 'GOLD') {
+                                            setGoldCategory('GRAM');
+                                            setGoldTypeId('GRAM_24');
+                                        }
+                                    }}
                                     disabled={hasPayments}
-                                    className="w-full px-3 py-2.5 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all font-bold text-base disabled:opacity-50 disabled:cursor-not-allowed h-[46px]"
+                                    className="w-full px-2 py-2.5 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary focus:ring-2 focus:ring-blue-900/50 outline-none transition-all font-bold text-xs disabled:opacity-50 disabled:cursor-not-allowed h-[46px]"
                                 >
-                                    <option value="TRY">₺</option>
-                                    <option value="USD">$</option>
-                                    <option value="EUR">€</option>
-                                    <option value="GOLD">Altın</option>
+                                    {CURRENCIES.map(c => (
+                                        <option key={c.code} value={c.code}>{c.symbol} {c.code}</option>
+                                    ))}
                                 </select>
                             </div>
                         </div>
                         {amount && (
                             <p className="text-[10px] text-text-secondary italic text-left animate-in fade-in slide-in-from-top-1 px-1 mt-0.5">
-                                {formatAmountToWords(amount, currency, currency === 'GOLD' ? {
+                                {formatAmountToWords(amount, currency, (currency === 'GOLD' || currency === 'SILVER') ? {
                                     type: goldTypeId,
                                     label: getGoldType(goldTypeId)?.label || '',
                                     subTypeLabel: goldSubType,
@@ -202,9 +217,10 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                             </p>
                         )}
 
-                        {/* Gold Sub-selection */}
-                        {currency === 'GOLD' && !hasPayments && (
-                             <GoldSelectionFields
+                        {/* Metal Sub-selection */}
+                        {(currency === 'GOLD' || currency === 'SILVER') && !hasPayments && (
+                             <MetalSelectionFields
+                                metal={currency as 'GOLD' | 'SILVER'}
                                 goldCategory={goldCategory}
                                 setGoldCategory={setGoldCategory}
                                 goldTypeId={goldTypeId}
@@ -232,7 +248,7 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                             {useManualRate && (
                                 <div className="flex items-center gap-2">
                                     <span className="text-sm text-text-secondary">
-                                        1 {currency === 'GOLD' ? (getGoldType(goldTypeId)?.label || 'Altın') : currency} =
+                                            1 {(currency === 'GOLD' || currency === 'SILVER') ? (getGoldType(goldTypeId)?.label || (currency === 'GOLD' ? 'Altın' : 'Gümüş')) : currency} =
                                     </span>
                                     <input
                                         type="number"

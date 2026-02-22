@@ -5,7 +5,7 @@
 
 import type { Transaction, Debt } from '../types';
 import { formatCurrency } from './format';
-import { calculatePureGoldWeight } from './goldConstants';
+import { calculatePureMetalWeight } from './goldConstants';
 import { convertToTRY, type CurrencyRates } from '../services/currency';
 
 export type CurrencyBalances = Map<string, number>;
@@ -78,7 +78,7 @@ export const calculateStreamBalance = (
         const summary = balances.get(currency)!;
 
         const pureWeight = (currency.startsWith('GOLD') && tx.goldDetail)
-            ? calculatePureGoldWeight(tx.goldDetail.type, tx.amount, tx.goldDetail.weightPerUnit)
+            ? calculatePureMetalWeight(tx.goldDetail.type, tx.amount, tx.goldDetail.weightPerUnit)
             : 0;
 
         const customRates = tx.customExchangeRate ? { [baseCurr]: tx.customExchangeRate } : undefined;
@@ -156,7 +156,7 @@ export const calculateDebtsBalance = (
         const summary = balances.get(currency)!;
         
         const pureWeight = (currency.startsWith('GOLD') && debt.goldDetail)
-            ? calculatePureGoldWeight(debt.goldDetail.type, debt.remainingAmount, debt.goldDetail.weightPerUnit)
+            ? calculatePureMetalWeight(debt.goldDetail.type, debt.remainingAmount, debt.goldDetail.weightPerUnit)
             : 0;
 
         const customRates = debt.customExchangeRate ? { [baseCurr]: debt.customExchangeRate } : undefined;

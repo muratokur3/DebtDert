@@ -1,4 +1,4 @@
-import { calculatePureGoldWeight } from '../utils/goldConstants';
+import { calculatePureMetalWeight } from '../utils/goldConstants';
 
 export interface CurrencyRates {
     date: string;
@@ -104,15 +104,16 @@ export const convertToTRY = (
 
     if (currency === 'USD') {
         amountInUsd = amount;
-    } else if (currency === 'GOLD') {
-        const xauRate = rates.usd['xau']; 
-        if (xauRate) {
-            const pricePerOzInUsd = 1 / xauRate;
+    } else if (currency === 'GOLD' || currency === 'SILVER') {
+        const metalKey = currency === 'GOLD' ? 'xau' : 'xag';
+        const rate = rates.usd[metalKey];
+        if (rate) {
+            const pricePerOzInUsd = 1 / rate;
             const pricePerGramInUsd = pricePerOzInUsd / 31.1034768;
 
             let effectiveGrams = amount;
             if (goldDetail) {
-                effectiveGrams = calculatePureGoldWeight(
+                effectiveGrams = calculatePureMetalWeight(
                     goldDetail.type,
                     amount,
                     goldDetail.weightPerUnit
@@ -132,12 +133,13 @@ export const convertToTRY = (
     return amountInUsd * usdToTry;
 };
 
-export const convertPureGoldToTRY = (grams: number, rates: CurrencyRates | null): number => {
+export const convertPureMetalToTRY = (grams: number, rates: CurrencyRates | null, metal: 'GOLD' | 'SILVER' = 'GOLD'): number => {
     if (!rates || !rates.usd) return 0;
-    const xauRate = rates.usd['xau'];
+    const metalKey = metal === 'GOLD' ? 'xau' : 'xag';
+    const rate = rates.usd[metalKey];
     const usdToTry = rates.usd['try'];
-    if (!xauRate || !usdToTry) return 0;
+    if (!rate || !usdToTry) return 0;
 
-    const pricePerGramInUsd = (1 / xauRate) / 31.1034768;
+    const pricePerGramInUsd = (1 / rate) / 31.1034768;
     return grams * pricePerGramInUsd * usdToTry;
 };

@@ -18,7 +18,7 @@ import { TransactionList } from '../components/TransactionList';
 import { formatCurrency } from '../utils/format';
 import { getGoldType } from '../utils/goldConstants';
 import { calculateStreamBalance, calculateDebtsBalance, mergeBalances, type DetailedBalances } from '../utils/balanceAggregator';
-import { fetchRates, convertToTRY, convertPureGoldToTRY, type CurrencyRates } from '../services/currency';
+import { fetchRates, convertToTRY, convertPureMetalToTRY, type CurrencyRates } from '../services/currency';
 import { DebtsTab } from '../components/DebtsTab';
 import { DateFilterDropdown, type QuickFilterType } from '../components/DateFilterDropdown';
 import { CreateDebtModal } from '../components/CreateDebtModal';

@@ -2,8 +2,8 @@
 export interface GoldTypeDefinition {
   id: string;
   label: string;
-  multiplier: number; // 24 Ayar karşılığı gram çarpanı
-  category: 'GRAM' | 'SIKKE' | 'BILEZIK' | 'TAKI';
+  multiplier: number; // Saf metal karşılığı çarpan (24K altın veya 999 gümüş)
+  category: 'GRAM' | 'SIKKE' | 'BILEZIK' | 'TAKI' | 'SILVER';
   defaultCarat?: number;
   fixedCarat?: boolean; // If true, carat selection is hidden/fixed
 }
@@ -13,6 +13,10 @@ export const GOLD_CATEGORIES = [
   { id: 'SIKKE', label: 'Fiziki Altın' },
   { id: 'BILEZIK', label: 'Bilezik' },
   { id: 'TAKI', label: 'Takı' },
+] as const;
+
+export const SILVER_CATEGORIES = [
+  { id: 'SILVER', label: 'Gümüş' }
 ] as const;
 
 export interface GoldModelDefinition {
@@ -46,6 +50,10 @@ export const GOLD_TYPES: GoldTypeDefinition[] = [
   { id: 'TAKI_22', label: '22 Ayar Takı', multiplier: 0.9166, category: 'TAKI', defaultCarat: 22 },
   { id: 'TAKI_14', label: '14 Ayar Takı', multiplier: 0.5833, category: 'TAKI', defaultCarat: 14 },
   { id: 'TAKI_8', label: '8 Ayar Takı', multiplier: 0.3333, category: 'TAKI', defaultCarat: 8 },
+
+  // GÜMÜŞLER
+  { id: 'SILVER_999', label: '999 Has Gümüş', multiplier: 1, category: 'SILVER' },
+  { id: 'SILVER_925', label: '925 Ayar Gümüş', multiplier: 0.925, category: 'SILVER' },
 ];
 
 export const BILEZIK_MODELS: GoldModelDefinition[] = [
@@ -79,7 +87,7 @@ export const GOLD_CARATS = [
 
 export const getGoldType = (id: string) => GOLD_TYPES.find(t => t.id === id);
 
-export const calculatePureGoldWeight = (typeId: string, amount: number, weightPerUnit?: number) => {
+export const calculatePureMetalWeight = (typeId: string, amount: number, weightPerUnit?: number) => {
   const type = getGoldType(typeId);
   if (!type) return 0;
 

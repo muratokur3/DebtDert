@@ -5,27 +5,32 @@ import { useAuth } from './useAuth';
 import { useUserIdentifiers } from './useUserIdentifiers';
 
 export const useDebts = () => {
-    const { user } = useAuth();
+    const { user, blockedUsers, blockedUsersLoading } = useAuth();
     const { identifiers } = useUserIdentifiers();
     const [dashboardDebts, setDashboardDebts] = useState<Debt[]>([]);
     const [allDebts, setAllDebts] = useState<Debt[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!user || identifiers.length === 0) {
-            setDashboardDebts([]);
-            setAllDebts([]);
-            setLoading(false);
+        if (!user || identifiers.length === 0 || blockedUsersLoading) {
+            setTimeout(() => {
+                setDashboardDebts([]);
+                setAllDebts([]);
+                setLoading(false);
+            }, 0);
             return;
         }
 
         const unsubscribe = subscribeToUserDebts(identifiers, (data: Debt[]) => {
-            // No soft delete - accept all debts
-            const processed = data;
-            setAllDebts(processed);
+            // Filter out debts involving blocked users completely on the read side for EVERYWHERE
+            const blockedUids = new Set((blockedUsers || []).map(b => b.blockedUid));
+            const activeUnblockedData = data.filter(d => !blockedUids.has(d.lenderId) && !blockedUids.has(d.borrowerId));
 
-            // Filter for Dashboard Main List
-            const mainList = processed.filter(d => {
+            // Set allDebts to only unblocked data so their history is 0.
+            setAllDebts(activeUnblockedData);
+
+            // Filter for Dashboard Main List (active, pending, etc.)
+            const mainList = activeUnblockedData.filter(d => {
                 const isPaid = d.status === 'PAID';
                 if (isPaid) return false;
 
@@ -43,7 +48,7 @@ export const useDebts = () => {
         });
 
         return () => unsubscribe();
-    }, [user]);
+    }, [user, identifiers, blockedUsers, blockedUsersLoading]);
 
     return { dashboardDebts, allDebts, loading };
 };

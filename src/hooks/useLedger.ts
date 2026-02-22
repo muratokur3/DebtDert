@@ -14,6 +14,7 @@ import {
 } from '../services/transactionService';
 import type { Transaction, Debt } from '../types';
 import { QueryDocumentSnapshot } from 'firebase/firestore';
+import { useAuthContext } from '../context/AuthContext';
 
 interface UseLedgerResult {
     ledger: Debt | null;
@@ -39,7 +40,10 @@ export const useLedger = (
     const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot | null>(null);
     const [hasMore, setHasMore] = useState(true);
     const [loading, setLoading] = useState(true);
+    const { blockedUsers } = useAuthContext();
     const [loadingMore, setLoadingMore] = useState(false);
+
+    const isBlocked = blockedUsers?.some(b => b.blockedUid === otherPartyId);
 
     const PAGE_SIZE = 20;
 
@@ -60,7 +64,7 @@ export const useLedger = (
             try {
                 const existingLedger = await findActiveLedger(userId, otherPartyId);
                 if (isMounted) {
-                    if (existingLedger) {
+                    if (existingLedger && !isBlocked) {
                         setLedger(existingLedger);
                         setLedgerId(existingLedger.id);
                     } else {
@@ -78,18 +82,18 @@ export const useLedger = (
         findLedger();
 
         return () => { isMounted = false; };
-    }, [userId, otherPartyId]);
+    }, [userId, otherPartyId, isBlocked]);
 
     // Subscribe to ledger document
     useEffect(() => {
-        if (!ledgerId) return;
+        if (!ledgerId || isBlocked) return;
         const unsubscribe = subscribeLedger(ledgerId, (updatedLedger) => setLedger(updatedLedger));
         return () => unsubscribe();
-    }, [ledgerId]);
+    }, [ledgerId, isBlocked]);
 
     // REAL-TIME: Subscribe to FIRST PAGE of transactions
     useEffect(() => {
-        if (!ledgerId) {
+        if (!ledgerId || isBlocked) {
             setTransactions([]);
             return;
         }
@@ -114,11 +118,11 @@ export const useLedger = (
         }, PAGE_SIZE);
 
         return () => unsubscribe();
-    }, [ledgerId]);
+    }, [ledgerId, isBlocked]);
 
     // Load More Callback
     const loadMore = useCallback(async () => {
-        if (loadingMore || !hasMore || !ledgerId || transactions.length < PAGE_SIZE) return;
+        if (loadingMore || !hasMore || !ledgerId || transactions.length < PAGE_SIZE || isBlocked) return;
 
         setLoadingMore(true);
         try {
@@ -155,7 +159,7 @@ export const useLedger = (
         } finally {
             setLoadingMore(false);
         }
-    }, [ledgerId, transactions, loadingMore, hasMore, lastDoc]);
+    }, [ledgerId, transactions, loadingMore, hasMore, lastDoc, isBlocked]);
 
     // Create ledger callback
     const createLedger = useCallback(async () => {

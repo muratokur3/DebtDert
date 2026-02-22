@@ -11,12 +11,12 @@ import { db } from '../services/firebase';
 import type { Notification } from '../services/notificationService';
 
 export const useNotifications = () => {
-    const { user } = useAuth();
+    const { user, blockedUsers, blockedUsersLoading } = useAuth();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!user?.uid) {
+        if (!user?.uid || blockedUsersLoading) {
             const timer = setTimeout(() => {
                 setNotifications([]);
                 setLoading(false);
@@ -41,6 +41,10 @@ export const useNotifications = () => {
 
                     // Handle null createdAt (local snapshot) - use current time as placeholder
                     const createdAt = data.createdAt || Timestamp.now();
+
+                    // Filter out notifications from blocked users
+                    const blockedUids = new Set((blockedUsers || []).map(b => b.blockedUid));
+                    if (blockedUids.has(data.actorId)) return; // Skip this notification
 
                     notifs.push({
                         id: docSnap.id,
@@ -74,9 +78,10 @@ export const useNotifications = () => {
             return () => unsubscribe();
         } catch (err) {
             console.error('Failed to initialize notification subscription:', err);
-            setLoading(false);
+            // Defer the state update to avoid cascading effect cycle warning
+            setTimeout(() => setLoading(false), 0);
         }
-    }, [user?.uid]); // Only re-run if UID changes
+    }, [user?.uid, blockedUsers, blockedUsersLoading]); // Re-run if UID, blocked list, or loading state changes
 
     // Methods are now handled via Service/Context, these are for backward compat if any
     const markAsRead = () => {};

@@ -10,7 +10,7 @@ import { usePersonDebts } from '../hooks/usePersonDebts';
 import { useDebts } from '../hooks/useDebts';
 import { useContactName } from '../hooks/useContactName';
 import { useLedger } from '../hooks/useLedger';
-import { ArrowLeft, MoreVertical, Edit2, UserPlus, Bell, BellOff, Ban, Trash2, Phone, MessageCircle } from 'lucide-react';
+import { ArrowLeft, MoreVertical, Edit2, UserPlus, Ban, Trash2, Phone, MessageCircle } from 'lucide-react';
 import { Avatar } from '../components/Avatar';
 import clsx from 'clsx';
 import { SummaryCard } from '../components/SummaryCard';
@@ -18,7 +18,7 @@ import { TransactionList } from '../components/TransactionList';
 import { formatCurrency } from '../utils/format';
 import { getGoldType } from '../utils/goldConstants';
 import { calculateStreamBalance, calculateDebtsBalance, mergeBalances, type DetailedBalances } from '../utils/balanceAggregator';
-import { fetchRates, convertToTRY, convertPureMetalToTRY, type CurrencyRates } from '../services/currency';
+import { fetchRates, type CurrencyRates } from '../services/currency';
 import { DebtsTab } from '../components/DebtsTab';
 import { DateFilterDropdown, type QuickFilterType } from '../components/DateFilterDropdown';
 import { CreateDebtModal } from '../components/CreateDebtModal';
@@ -120,7 +120,6 @@ export const PersonStream = () => {
                         setResolvedUid(contact.linkedUserId);
                         const userDoc = await getDoc(doc(db, 'users', contact.linkedUserId));
                         if (userDoc.exists()) {
-                            const userData = userDoc.data() as User;
                             const blocked = await isUserBlocked(user.uid, contact.linkedUserId);
                             setIsBlocked(blocked);
                         }
@@ -574,8 +573,21 @@ export const PersonStream = () => {
             )}
 
             {isBlocked && (
-                <div className="bg-orange-50 dark:bg-orange-900/20 px-4 py-2 text-center text-sm text-orange-700 dark:text-orange-300">
-                    Bu kullanıcı engellenmiş
+                <div className="m-4 bg-orange-50 dark:bg-orange-900/20 p-6 rounded-2xl border border-orange-200 dark:border-orange-800/50 flex flex-col items-center justify-center text-center shadow-sm">
+                    <div className="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-800/50 flex items-center justify-center mb-3">
+                        <Ban size={24} className="text-orange-600 dark:text-orange-400" />
+                    </div>
+                    <h3 className="text-lg font-bold text-orange-800 dark:text-orange-300 mb-2">Kullanıcı Engellendi</h3>
+                    <p className="text-sm text-orange-700 dark:text-orange-400 mb-5 leading-relaxed">
+                        Bu kişiyle olan tüm finansal verileriniz ve borç/alacak hesaplarınız şu an tamamen gizlenmektedir. 
+                        Hesapları tekrar aktifleştirmek için engeli kaldırın.
+                    </p>
+                    <button 
+                        onClick={handleBlockToggle}
+                        className="bg-orange-600 text-white px-8 py-2.5 rounded-xl font-semibold hover:bg-orange-700 transition-colors shadow-sm"
+                    >
+                        Engeli Kaldır
+                    </button>
                 </div>
             )}
 
@@ -593,9 +605,9 @@ export const PersonStream = () => {
                     {/* Card 1: TOPLAM */}
                     {(() => {
                         const entries = Array.from(totalBalance.entries());
-                        const totalNet = entries.reduce((sum, [_, b]) => sum + b.netTRY, 0);
-                        const totalRec = entries.reduce((sum, [_, b]) => sum + b.receivablesTRY, 0);
-                        const totalPay = entries.reduce((sum, [_, b]) => sum + b.payablesTRY, 0);
+                        const totalNet = entries.reduce((sum, [, b]) => sum + b.netTRY, 0);
+                        const totalRec = entries.reduce((sum, [, b]) => sum + b.receivablesTRY, 0);
+                        const totalPay = entries.reduce((sum, [, b]) => sum + b.payablesTRY, 0);
 
                         return (
                             <SummaryCard
@@ -620,9 +632,9 @@ export const PersonStream = () => {
                     {/* Card 2: BORÇLAR (LEDGER) */}
                     {(() => {
                         const entries = Array.from(streamBalance.entries());
-                        const totalNet = entries.reduce((sum, [_, b]) => sum + b.netTRY, 0);
-                        const totalRec = entries.reduce((sum, [_, b]) => sum + b.receivablesTRY, 0);
-                        const totalPay = entries.reduce((sum, [_, b]) => sum + b.payablesTRY, 0);
+                        const totalNet = entries.reduce((sum, [, b]) => sum + b.netTRY, 0);
+                        const totalRec = entries.reduce((sum, [, b]) => sum + b.receivablesTRY, 0);
+                        const totalPay = entries.reduce((sum, [, b]) => sum + b.payablesTRY, 0);
 
                         return (
                             <SummaryCard
@@ -647,9 +659,9 @@ export const PersonStream = () => {
                     {/* Card 3: VADELİ (INSTALLMENT) */}
                     {(() => {
                         const entries = Array.from(installmentBalance.entries());
-                        const totalNet = entries.reduce((sum, [_, b]) => sum + b.netTRY, 0);
-                        const totalRec = entries.reduce((sum, [_, b]) => sum + b.receivablesTRY, 0);
-                        const totalPay = entries.reduce((sum, [_, b]) => sum + b.payablesTRY, 0);
+                        const totalNet = entries.reduce((sum, [, b]) => sum + b.netTRY, 0);
+                        const totalRec = entries.reduce((sum, [, b]) => sum + b.receivablesTRY, 0);
+                        const totalPay = entries.reduce((sum, [, b]) => sum + b.payablesTRY, 0);
 
                         return (
                             <SummaryCard
@@ -687,8 +699,6 @@ export const PersonStream = () => {
                                     const goldType = isGold ? curr.split(':')[1] : undefined;
                                     const goldTypeData = goldType ? getGoldType(goldType) : undefined;
                                     const displayLabel = isGold ? (goldTypeData?.label || goldType) : curr;
-                                    const baseCurr = isGold ? 'GOLD' : curr;
-                                    const goldDetail = isGold ? { type: goldType } : undefined;
 
                                     return (
                                         <div key={curr} className="flex justify-between items-center p-4 bg-surface rounded-xl border border-border shadow-sm">

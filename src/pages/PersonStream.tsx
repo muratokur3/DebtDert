@@ -16,8 +16,9 @@ import clsx from 'clsx';
 import { SummaryCard } from '../components/SummaryCard';
 import { TransactionList } from '../components/TransactionList';
 import { formatCurrency } from '../utils/format';
+import { getGoldType } from '../utils/goldConstants';
 import { calculateStreamBalance, calculateDebtsBalance, mergeBalances, type DetailedBalances } from '../utils/balanceAggregator';
-import { fetchRates, convertToTRY, type CurrencyRates } from '../services/currency';
+import { fetchRates, convertToTRY, convertPureGoldToTRY, type CurrencyRates } from '../services/currency';
 import { DebtsTab } from '../components/DebtsTab';
 import { DateFilterDropdown, type QuickFilterType } from '../components/DateFilterDropdown';
 import { CreateDebtModal } from '../components/CreateDebtModal';
@@ -248,18 +249,18 @@ export const PersonStream = () => {
     // Calculate balances
     const streamBalance = useMemo(() => {
         if (!user) return new Map() as DetailedBalances;
-        return calculateStreamBalance(transactions, user.uid);
-    }, [transactions, user]);
+        return calculateStreamBalance(transactions, user.uid, rates);
+    }, [transactions, user, rates]);
 
     const normalDebtsBalance = useMemo(() => {
         if (!user) return new Map() as DetailedBalances;
-        return calculateDebtsBalance(normalDebts, user.uid);
-    }, [normalDebts, user]);
+        return calculateDebtsBalance(normalDebts, user.uid, rates);
+    }, [normalDebts, user, rates]);
 
     const installmentBalance = useMemo(() => {
         if (!user) return new Map() as DetailedBalances;
-        return calculateDebtsBalance(installmentDebts, user.uid);
-    }, [installmentDebts, user]);
+        return calculateDebtsBalance(installmentDebts, user.uid, rates);
+    }, [installmentDebts, user, rates]);
 
     const totalBalance = useMemo(() => {
         const merged1 = mergeBalances(streamBalance, normalDebtsBalance);
@@ -628,24 +629,9 @@ export const PersonStream = () => {
                     {/* Card 1: TOPLAM */}
                     {(() => {
                         const entries = Array.from(totalBalance.entries());
-                        const totalNet = entries.reduce((sum, [curr, b]) => {
-                            const isGold = curr.startsWith('GOLD:');
-                            const baseCurr = isGold ? 'GOLD' : curr;
-                            const goldDetail = isGold ? { type: curr.split(':')[1] } : undefined;
-                            return sum + (rates ? convertToTRY(b.net, baseCurr, rates, undefined, goldDetail) : 0);
-                        }, 0);
-                        const totalRec = entries.reduce((sum, [curr, b]) => {
-                            const isGold = curr.startsWith('GOLD:');
-                            const baseCurr = isGold ? 'GOLD' : curr;
-                            const goldDetail = isGold ? { type: curr.split(':')[1] } : undefined;
-                            return sum + (rates ? convertToTRY(b.receivables, baseCurr, rates, undefined, goldDetail) : 0);
-                        }, 0);
-                        const totalPay = entries.reduce((sum, [curr, b]) => {
-                            const isGold = curr.startsWith('GOLD:');
-                            const baseCurr = isGold ? 'GOLD' : curr;
-                            const goldDetail = isGold ? { type: curr.split(':')[1] } : undefined;
-                            return sum + (rates ? convertToTRY(b.payables, baseCurr, rates, undefined, goldDetail) : 0);
-                        }, 0);
+                        const totalNet = entries.reduce((sum, [_, b]) => sum + b.netTRY, 0);
+                        const totalRec = entries.reduce((sum, [_, b]) => sum + b.receivablesTRY, 0);
+                        const totalPay = entries.reduce((sum, [_, b]) => sum + b.payablesTRY, 0);
 
                         return (
                             <SummaryCard
@@ -670,24 +656,9 @@ export const PersonStream = () => {
                     {/* Card 2: BORÇLAR (LEDGER) */}
                     {(() => {
                         const entries = Array.from(streamBalance.entries());
-                        const totalNet = entries.reduce((sum, [curr, b]) => {
-                            const isGold = curr.startsWith('GOLD:');
-                            const baseCurr = isGold ? 'GOLD' : curr;
-                            const goldDetail = isGold ? { type: curr.split(':')[1] } : undefined;
-                            return sum + (rates ? convertToTRY(b.net, baseCurr, rates, undefined, goldDetail) : 0);
-                        }, 0);
-                        const totalRec = entries.reduce((sum, [curr, b]) => {
-                            const isGold = curr.startsWith('GOLD:');
-                            const baseCurr = isGold ? 'GOLD' : curr;
-                            const goldDetail = isGold ? { type: curr.split(':')[1] } : undefined;
-                            return sum + (rates ? convertToTRY(b.receivables, baseCurr, rates, undefined, goldDetail) : 0);
-                        }, 0);
-                        const totalPay = entries.reduce((sum, [curr, b]) => {
-                            const isGold = curr.startsWith('GOLD:');
-                            const baseCurr = isGold ? 'GOLD' : curr;
-                            const goldDetail = isGold ? { type: curr.split(':')[1] } : undefined;
-                            return sum + (rates ? convertToTRY(b.payables, baseCurr, rates, undefined, goldDetail) : 0);
-                        }, 0);
+                        const totalNet = entries.reduce((sum, [_, b]) => sum + b.netTRY, 0);
+                        const totalRec = entries.reduce((sum, [_, b]) => sum + b.receivablesTRY, 0);
+                        const totalPay = entries.reduce((sum, [_, b]) => sum + b.payablesTRY, 0);
 
                         return (
                             <SummaryCard
@@ -712,24 +683,9 @@ export const PersonStream = () => {
                     {/* Card 3: VADELİ (INSTALLMENT) */}
                     {(() => {
                         const entries = Array.from(installmentBalance.entries());
-                        const totalNet = entries.reduce((sum, [curr, b]) => {
-                            const isGold = curr.startsWith('GOLD:');
-                            const baseCurr = isGold ? 'GOLD' : curr;
-                            const goldDetail = isGold ? { type: curr.split(':')[1] } : undefined;
-                            return sum + (rates ? convertToTRY(b.net, baseCurr, rates, undefined, goldDetail) : 0);
-                        }, 0);
-                        const totalRec = entries.reduce((sum, [curr, b]) => {
-                            const isGold = curr.startsWith('GOLD:');
-                            const baseCurr = isGold ? 'GOLD' : curr;
-                            const goldDetail = isGold ? { type: curr.split(':')[1] } : undefined;
-                            return sum + (rates ? convertToTRY(b.receivables, baseCurr, rates, undefined, goldDetail) : 0);
-                        }, 0);
-                        const totalPay = entries.reduce((sum, [curr, b]) => {
-                            const isGold = curr.startsWith('GOLD:');
-                            const baseCurr = isGold ? 'GOLD' : curr;
-                            const goldDetail = isGold ? { type: curr.split(':')[1] } : undefined;
-                            return sum + (rates ? convertToTRY(b.payables, baseCurr, rates, undefined, goldDetail) : 0);
-                        }, 0);
+                        const totalNet = entries.reduce((sum, [_, b]) => sum + b.netTRY, 0);
+                        const totalRec = entries.reduce((sum, [_, b]) => sum + b.receivablesTRY, 0);
+                        const totalPay = entries.reduce((sum, [_, b]) => sum + b.payablesTRY, 0);
 
                         return (
                             <SummaryCard
@@ -764,9 +720,11 @@ export const PersonStream = () => {
                             <div className="grid gap-3">
                                 {Array.from(totalBalance.entries()).sort((a) => a[0] === 'TRY' ? -1 : 1).map(([curr, bal]) => {
                                     const isGold = curr.startsWith('GOLD:');
-                                    const displayLabel = isGold ? curr.split(':')[1] : curr;
+                                    const goldType = isGold ? curr.split(':')[1] : undefined;
+                                    const goldTypeData = goldType ? getGoldType(goldType) : undefined;
+                                    const displayLabel = isGold ? (goldTypeData?.label || goldType) : curr;
                                     const baseCurr = isGold ? 'GOLD' : curr;
-                                    const goldDetail = isGold ? { type: curr.split(':')[1] } : undefined;
+                                    const goldDetail = isGold ? { type: goldType } : undefined;
 
                                     return (
                                         <div key={curr} className="flex justify-between items-center p-4 bg-surface rounded-xl border border-border shadow-sm">
@@ -785,7 +743,7 @@ export const PersonStream = () => {
                                                 </p>
                                                 {curr !== 'TRY' && rates && (
                                                     <p className="text-xs text-text-secondary">
-                                                        ≈ {convertToTRY(bal.net, baseCurr, rates, undefined, goldDetail).toLocaleString('tr-TR')} TRY
+                                                        ≈ {bal.netTRY.toLocaleString('tr-TR')} TRY
                                                     </p>
                                                 )}
                                             </div>

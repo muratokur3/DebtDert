@@ -88,11 +88,12 @@ export interface Installment {
 }
 
 export interface GoldDetail {
-    type: 'GRAM' | 'CEYREK' | 'YARIM' | 'TAM' | 'ATA' | 'BILEZIK';
+    type: string;
     label: string;
+    subTypeLabel?: string;
     carat?: number;
-    weight?: number;
-    quantity?: number;
+    weightPerUnit?: number;
+    totalWeight?: number;
 }
 
 export interface Debt {

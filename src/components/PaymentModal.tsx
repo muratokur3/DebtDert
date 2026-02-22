@@ -62,7 +62,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="space-y-1">
                         <AmountInput
-                            label={`Tutar (${currency})`}
+                            label={currency === 'GOLD' ? (goldDetail?.type.includes('GRAM') ? 'Gram' : 'Adet') : `Tutar (${currency})`}
                             value={amount}
                             onChange={setAmount}
                             required

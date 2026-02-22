@@ -14,10 +14,11 @@ import { PendingPaymentsModal } from '../components/PendingPaymentsModal';
 
 
 import { useTheme } from '../context/ThemeContext';
-import { fetchRates, convertToTRY, type CurrencyRates } from '../services/currency';
+import { fetchRates, convertToTRY, convertPureGoldToTRY, type CurrencyRates } from '../services/currency';
 import type { Debt } from '../types';
 import { SummaryCard } from '../components/SummaryCard';
 import { EditDebtModal } from '../components/EditDebtModal';
+import { getGoldType, calculatePureGoldWeight } from '../utils/goldConstants';
 import { updateDebt, addPayment, claimLegacyDebts } from '../services/db';
 import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
@@ -141,7 +142,15 @@ export const Dashboard = () => {
         if (!user || !rates || identifiers.length === 0) return {
             contactSummaries: [],
             availableCurrencies: [],
-            totalsByCurrency: {} as Record<string, { receivables: number, payables: number, net: number, currency: string }>,
+            totalsByCurrency: {} as Record<string, {
+                receivables: number,
+                payables: number,
+                net: number,
+                currency: string,
+                pureGoldReceivables: number,
+                pureGoldPayables: number,
+                pureGoldNet: number
+            }>,
             grandTotalInTRY: { receivables: 0, payables: 0, net: 0, currency: 'TRY' }
         };
 
@@ -156,8 +165,17 @@ export const Dashboard = () => {
             hasUnreadActivity?: boolean;
         }>();
 
-        const totalsByCurrency: Record<string, { receivables: number, payables: number, net: number, currency: string }> = {};
+        const totalsByCurrency: Record<string, {
+            receivables: number,
+            payables: number,
+            net: number,
+            currency: string,
+            pureGoldReceivables: number,
+            pureGoldPayables: number,
+            pureGoldNet: number
+        }> = {};
         const currencies = new Set<string>();
+        const grandTotalInTRY = { receivables: 0, payables: 0, net: 0, currency: 'TRY' };
 
         // 1. Process Dashboard Debts
         if (identifiers.length === 0) {
@@ -177,10 +195,11 @@ export const Dashboard = () => {
             currencies.add(currency);
 
             if (!totalsByCurrency[currency]) {
-                totalsByCurrency[currency] = { receivables: 0, payables: 0, net: 0, currency };
+                totalsByCurrency[currency] = {
+                    receivables: 0, payables: 0, net: 0, currency,
+                    pureGoldReceivables: 0, pureGoldPayables: 0, pureGoldNet: 0
+                };
             }
-
-
 
             const isLender = isMe(d.lenderId);
             const otherId = isLender ? d.borrowerId : d.lenderId;
@@ -208,22 +227,34 @@ export const Dashboard = () => {
 
             // Global Totals
             if (shouldCountReceivable || shouldCountPayable) {
-                // Determine balance from MY perspective
-                // Special Debt (ONE_TIME/INSTALLMENT) remainingAmount is always positive.
-                // Ledger remainingAmount can be negative (lender owes borrower).
-                const effectiveBalance = isLender ? d.remainingAmount : -d.remainingAmount;
+                const amount = d.remainingAmount;
+                const isGold = d.currency === 'GOLD';
+                const baseCurr = isGold ? 'GOLD' : d.currency;
+                const goldDetail = d.goldDetail;
+                const pureWeight = (isGold && goldDetail)
+                    ? calculatePureGoldWeight(goldDetail.type, amount, goldDetail.weightPerUnit)
+                    : 0;
 
-                if (effectiveBalance > 0) {
-                    // They owe me (Receivable)
-                    totalsByCurrency[currency].receivables += effectiveBalance;
-                    totalsByCurrency[currency].net += effectiveBalance;
-                } else if (effectiveBalance < 0) {
-                    // I owe them (Payable)
-                    const absVal = Math.abs(effectiveBalance);
-                    totalsByCurrency[currency].payables += absVal;
-                    totalsByCurrency[currency].net -= absVal;
+                const customRates = d.customExchangeRate ? { [baseCurr]: d.customExchangeRate } : undefined;
+                const tryVal = convertToTRY(amount, baseCurr, rates!, customRates, goldDetail);
+
+                if (shouldCountReceivable) {
+                    totalsByCurrency[currency].receivables += amount;
+                    totalsByCurrency[currency].net += amount;
+                    totalsByCurrency[currency].pureGoldReceivables += pureWeight;
+                    totalsByCurrency[currency].pureGoldNet += pureWeight;
+
+                    grandTotalInTRY.receivables += tryVal;
+                    grandTotalInTRY.net += tryVal;
+                } else if (shouldCountPayable) {
+                    totalsByCurrency[currency].payables += amount;
+                    totalsByCurrency[currency].net -= amount;
+                    totalsByCurrency[currency].pureGoldPayables += pureWeight;
+                    totalsByCurrency[currency].pureGoldNet -= pureWeight;
+
+                    grandTotalInTRY.payables += tryVal;
+                    grandTotalInTRY.net -= tryVal;
                 }
-                // If 0, net/rec/pay don't change
             }
 
             // Contact Summaries (Same logic for individual balances)
@@ -363,19 +394,7 @@ export const Dashboard = () => {
         // 3. Sorting
         summaries.sort((a, b) => b.lastActivity.getTime() - a.lastActivity.getTime());
 
-        // 5. Calculate Grand Total in TRY
-        const grandTotalInTRY = { receivables: 0, payables: 0, net: 0, currency: 'TRY' };
-        Object.values(totalsByCurrency).forEach(t => {
-            // Rates guaranteed not null
-            const isGold = t.currency.startsWith('GOLD:');
-            const baseCurr = isGold ? 'GOLD' : t.currency;
-            const goldType = isGold ? t.currency.split(':')[1] : undefined;
-            const goldDetail = goldType ? { type: goldType } : undefined;
-
-            grandTotalInTRY.receivables += convertToTRY(t.receivables, baseCurr, rates!, undefined, goldDetail);
-            grandTotalInTRY.payables += convertToTRY(t.payables, baseCurr, rates!, undefined, goldDetail);
-            grandTotalInTRY.net += convertToTRY(t.net, baseCurr, rates!, undefined, goldDetail);
-        });
+        // 5. Grand Total in TRY is already calculated during process
 
         return {
             contactSummaries: summaries,
@@ -634,17 +653,23 @@ export const Dashboard = () => {
                             const isGold = total.currency.startsWith('GOLD:');
                             const baseCurr = isGold ? 'GOLD' : total.currency;
                             const goldType = isGold ? total.currency.split(':')[1] : undefined;
-                            const goldDetail = goldType ? { type: goldType } : undefined;
+                            const goldTypeData = goldType ? getGoldType(goldType) : undefined;
 
-                            const net = (isToggled && rates) ? convertToTRY(total.net, baseCurr, rates, undefined, goldDetail) : total.net;
-                            const receivables = (isToggled && rates) ? convertToTRY(total.receivables, baseCurr, rates, undefined, goldDetail) : total.receivables;
-                            const payables = (isToggled && rates) ? convertToTRY(total.payables, baseCurr, rates, undefined, goldDetail) : total.payables;
+                            const net = (isToggled && rates)
+                                ? (isGold ? convertPureGoldToTRY(total.pureGoldNet, rates) : convertToTRY(total.net, baseCurr, rates))
+                                : total.net;
+                            const receivables = (isToggled && rates)
+                                ? (isGold ? convertPureGoldToTRY(total.pureGoldReceivables, rates) : convertToTRY(total.receivables, baseCurr, rates))
+                                : total.receivables;
+                            const payables = (isToggled && rates)
+                                ? (isGold ? convertPureGoldToTRY(total.pureGoldPayables, rates) : convertToTRY(total.payables, baseCurr, rates))
+                                : total.payables;
 
                             return (
                                 <SummaryCard
                                     key={total.currency}
                                     data-currency={total.currency}
-                                    title={total.currency.startsWith('GOLD:') ? `Altın (${total.currency.split(':')[1]})` : `Net Varlık (${total.currency})`}
+                                    title={isGold ? `Altın (${goldTypeData?.label || goldType})` : `Net Varlık (${total.currency})`}
                                     currency={total.currency}
                                     net={net}
                                     receivables={receivables}

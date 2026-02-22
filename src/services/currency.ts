@@ -1,4 +1,4 @@
-import { calculateGoldToGram24K } from '../utils/goldConstants';
+import { calculatePureGoldWeight } from '../utils/goldConstants';
 
 export interface CurrencyRates {
     date: string;
@@ -112,11 +112,10 @@ export const convertToTRY = (
 
             let effectiveGrams = amount;
             if (goldDetail) {
-                effectiveGrams = calculateGoldToGram24K(
+                effectiveGrams = calculatePureGoldWeight(
                     goldDetail.type,
                     amount,
-                    goldDetail.carat,
-                    goldDetail.weight
+                    goldDetail.weightPerUnit
                 );
             }
 
@@ -131,4 +130,14 @@ export const convertToTRY = (
 
     // 3. Convert USD to TRY
     return amountInUsd * usdToTry;
+};
+
+export const convertPureGoldToTRY = (grams: number, rates: CurrencyRates | null): number => {
+    if (!rates || !rates.usd) return 0;
+    const xauRate = rates.usd['xau'];
+    const usdToTry = rates.usd['try'];
+    if (!xauRate || !usdToTry) return 0;
+
+    const pricePerGramInUsd = (1 / xauRate) / 31.1034768;
+    return grams * pricePerGramInUsd * usdToTry;
 };

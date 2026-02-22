@@ -1,25 +1,28 @@
 import type { GoldDetail } from '../types';
+import { getGoldType } from './goldConstants';
 
 export const formatCurrency = (amount: number | undefined | null, currency: string, goldDetail?: GoldDetail) => {
     const validAmount = amount ?? 0;
 
     if (currency === 'GOLD' || currency.startsWith('GOLD:')) {
-        let label = 'Gr';
-        let subType = '';
+        const typeId = goldDetail?.type || (currency.includes(':') ? currency.split(':')[1] : 'GRAM_24');
+        const type = getGoldType(typeId);
 
-        if (goldDetail) {
-            subType = goldDetail.type;
-        } else if (currency.includes(':')) {
-            subType = currency.split(':')[1];
+        if (type) {
+            if (type.category === 'SIKKE') {
+                return `${validAmount.toLocaleString('tr-TR')} Adet ${type.label}`;
+            }
+            if (type.category === 'BILEZIK' || type.category === 'TAKI') {
+                let label = `${validAmount.toLocaleString('tr-TR')} Adet`;
+                if (goldDetail?.carat) label += ` ${goldDetail.carat} Ayar`;
+                if (goldDetail?.weightPerUnit) label += ` ${goldDetail.weightPerUnit} Gr`;
+                label += ` ${type.label}`;
+                if (goldDetail?.subTypeLabel) label += ` (${goldDetail.subTypeLabel})`;
+                return label;
+            }
+            return `${validAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Gr ${type.label}`;
         }
-
-        if (subType === 'CEYREK') label = 'Çeyrek';
-        else if (subType === 'YARIM') label = 'Yarım';
-        else if (subType === 'TAM') label = 'Tam';
-        else if (subType === 'ATA') label = 'Ata';
-        else if (subType === 'BILEZIK') label = 'Gr (Bilezik)';
-
-        return `${validAmount.toLocaleString('tr-TR', { minimumFractionDigits: (subType === 'GRAM' || subType === 'BILEZIK' || !subType) ? 2 : 0, maximumFractionDigits: 2 })} ${label}`;
+        return `${validAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} Gr Altın`;
     }
 
     try {
@@ -104,30 +107,51 @@ export const numberToTurkishWords = (num: number): string => {
  * Returns a formatted string like "On Bin Türk Lirası"
  */
 export const formatAmountToWords = (amount: number | string, currency: string, goldDetail?: GoldDetail): string => {
-    const num = typeof amount === 'string' ? parseInt(amount.replace(/\D/g, '')) : amount;
+    const cleanAmount = typeof amount === 'string' ? amount.replace(',', '.') : amount.toString();
+    const num = parseFloat(cleanAmount);
+
     if (isNaN(num) || num <= 0) return '';
 
-    const verbal = numberToTurkishWords(num);
+    // Integer part
+    const integerPart = Math.floor(num);
+    let verbal = numberToTurkishWords(integerPart);
+
+    // Fractional part (up to 2 decimals)
+    const fraction = Math.round((num - integerPart) * 100);
+    if (fraction > 0) {
+        verbal += ` virgül ${numberToTurkishWords(fraction)}`;
+    }
+
     if (!verbal) return '';
+
+    if (currency === 'GOLD' || currency.startsWith('GOLD:')) {
+        const typeId = goldDetail?.type || (currency.includes(':') ? currency.split(':')[1] : 'GRAM_24');
+        const type = getGoldType(typeId);
+
+        if (type) {
+            if (type.category === 'BILEZIK' || type.category === 'TAKI') {
+                let detail = '';
+                if (goldDetail?.carat) detail += `${goldDetail.carat} Ayar `;
+                if (goldDetail?.weightPerUnit) detail += `${goldDetail.weightPerUnit} Gram `;
+                detail += type.label;
+                if (goldDetail?.subTypeLabel) detail += ` (${goldDetail.subTypeLabel})`;
+                return `${verbal} Adet ${detail}`;
+            }
+            if (type.category === 'SIKKE') {
+                return `${verbal} Adet ${type.label}`;
+            }
+            return `${verbal} Gram ${type.label}`;
+        }
+        return `${verbal} Gram Altın`;
+    }
 
     const currencyNames: Record<string, string> = {
         'TRY': 'Türk Lirası',
         'USD': 'Amerikan Doları',
         'EUR': 'Euro',
-        'GOLD': 'Gram Altın',
-        'GRAM': 'Gram Altın',
-        'CEYREK': 'Çeyrek Altın',
-        'YARIM': 'Yarım Altın',
-        'TAM': 'Tam Altın',
-        'ATA': 'Ata Altın',
-        'BILEZIK': 'Gram Bilezik'
+        'GBP': 'İngiliz Sterlini'
     };
 
-    let currencyLabel = currencyNames[currency] || currency;
-    if (currency === 'GOLD' || currency.startsWith('GOLD:')) {
-        const subType = goldDetail?.type || (currency.includes(':') ? currency.split(':')[1] : 'GRAM');
-        currencyLabel = currencyNames[subType] || currencyNames['GOLD'];
-    }
-
+    const currencyLabel = currencyNames[currency] || currency;
     return `${verbal} ${currencyLabel}`;
 };

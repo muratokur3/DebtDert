@@ -5,7 +5,7 @@ import { useModal } from '../context/ModalContext';
 import { formatAmountToWords } from '../utils/format';
 import { AmountInput } from './AmountInput';
 import type { Debt, GoldDetail } from '../types';
-import { GOLD_TYPES, GOLD_CARATS } from '../utils/goldConstants';
+import { GOLD_TYPES, BILEZIK_MODELS, TAKI_TYPES, getGoldType } from '../utils/goldConstants';
 import clsx from 'clsx';
 import { Toggle } from './Toggle';
 
@@ -21,10 +21,9 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
     const [currency, setCurrency] = useState('TRY');
 
     // Gold State
-    const [goldType, setGoldType] = useState<string>('GRAM');
-    const [goldCarat, setGoldCarat] = useState<number>(24);
-    const [goldWeight, setGoldWeight] = useState<string>('');
-    const [goldQuantity, setGoldQuantity] = useState<string>('');
+    const [goldTypeId, setGoldTypeId] = useState<string>('GRAM_24');
+    const [goldSubType, setGoldSubType] = useState<string>('');
+    const [goldWeightPerUnit, setGoldWeightPerUnit] = useState<string>('');
 
     // Custom Rate
     const [manualRate, setManualRate] = useState('');
@@ -45,10 +44,9 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
 
             // Gold Detail Init
             if (debt.currency === 'GOLD' && debt.goldDetail) {
-                setGoldType(debt.goldDetail.type);
-                setGoldCarat(debt.goldDetail.carat || 24);
-                setGoldWeight(debt.goldDetail.weight?.toString() || '');
-                setGoldQuantity(debt.goldDetail.quantity?.toString() || '');
+                setGoldTypeId(debt.goldDetail.type);
+                setGoldSubType(debt.goldDetail.subTypeLabel || '');
+                setGoldWeightPerUnit(debt.goldDetail.weightPerUnit?.toString() || '');
             }
 
             if (debt.customExchangeRate) {
@@ -99,13 +97,13 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                     updates.currency = currency;
 
                     if (currency === 'GOLD') {
-                        const typeData = GOLD_TYPES.find(t => t.id === goldType);
+                        const typeData = getGoldType(goldTypeId);
                         updates.goldDetail = {
-                            type: goldType as GoldDetail['type'],
-                            label: typeData?.label || goldType,
-                            carat: typeData?.hasCarat ? goldCarat : undefined,
-                            weight: typeData?.hasWeight ? parseFloat(goldWeight) : undefined,
-                            quantity: typeData?.hasQuantity ? parseFloat(goldQuantity) : undefined
+                            type: goldTypeId,
+                            label: typeData?.label || goldTypeId,
+                            subTypeLabel: goldSubType || undefined,
+                            carat: typeData?.defaultCarat,
+                            weightPerUnit: parseFloat(goldWeightPerUnit) || undefined,
                         };
                     } else if (debt.goldDetail) {
                         updates.goldDetail = deleteField() as any;
@@ -148,7 +146,7 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                         <div className="flex items-start gap-3">
                             <div className="flex-1">
                                 <AmountInput
-                                    label="Tutar"
+                                    label={currency === 'GOLD' ? (getGoldType(goldTypeId)?.category === 'GRAM' ? 'Gram' : 'Adet') : 'Tutar'}
                                     value={amount}
                                     onChange={setAmount}
                                     disabled={hasPayments}
@@ -172,19 +170,24 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                         </div>
                         {amount && (
                             <p className="text-[10px] text-text-secondary italic text-left animate-in fade-in slide-in-from-top-1 px-1 mt-0.5">
-                                {formatAmountToWords(amount, currency, currency === 'GOLD' ? { type: goldType as GoldDetail['type'], label: '' } : undefined)}
+                                {formatAmountToWords(amount, currency, currency === 'GOLD' ? {
+                                    type: goldTypeId,
+                                    label: getGoldType(goldTypeId)?.label || '',
+                                    subTypeLabel: goldSubType,
+                                    weightPerUnit: parseFloat(goldWeightPerUnit)
+                                } : undefined)}
                             </p>
                         )}
 
                         {/* Gold Sub-selection */}
                         {currency === 'GOLD' && !hasPayments && (
-                            <div className="p-4 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-200 dark:border-amber-800 space-y-3 animate-in fade-in slide-in-from-top-2 mt-2">
+                            <div className="p-4 bg-amber-50 dark:bg-amber-900/10 rounded-xl border-2 border-amber-200 dark:border-amber-800 space-y-3 animate-in fade-in slide-in-from-top-2 mt-2">
                                 <div>
-                                    <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase">Altın Türü</label>
+                                    <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase tracking-tight">Altın Türü / Ayar</label>
                                     <select
-                                        value={goldType}
-                                        onChange={(e) => setGoldType(e.target.value)}
-                                        className="w-full px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-800 text-sm font-semibold text-text-primary focus:ring-2 focus:ring-amber-500 outline-none"
+                                        value={goldTypeId}
+                                        onChange={(e) => setGoldTypeId(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-800 text-sm font-bold text-text-primary focus:ring-2 focus:ring-amber-500 outline-none transition-all"
                                     >
                                         {GOLD_TYPES.map(t => (
                                             <option key={t.id} value={t.id}>{t.label}</option>
@@ -192,53 +195,35 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                                     </select>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    {GOLD_TYPES.find(t => t.id === goldType)?.hasCarat && (
+                                {(getGoldType(goldTypeId)?.category === 'BILEZIK' || getGoldType(goldTypeId)?.category === 'TAKI') && (
+                                    <div className="grid grid-cols-2 gap-3 animate-in zoom-in-95 duration-200">
                                         <div>
-                                            <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase">Ayar</label>
+                                            <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase tracking-tight">Model / Detay</label>
                                             <select
-                                                value={goldCarat}
-                                                onChange={(e) => setGoldCarat(Number(e.target.value))}
+                                                value={goldSubType}
+                                                onChange={(e) => setGoldSubType(e.target.value)}
                                                 className="w-full px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-800 text-sm font-semibold text-text-primary focus:ring-2 focus:ring-amber-500 outline-none"
                                             >
-                                                {GOLD_CARATS.map(c => (
-                                                    <option key={c.value} value={c.value}>{c.label}</option>
+                                                <option value="">Seçiniz...</option>
+                                                {(getGoldType(goldTypeId)?.category === 'BILEZIK' ? BILEZIK_MODELS : TAKI_TYPES).map(m => (
+                                                    <option key={m} value={m}>{m}</option>
                                                 ))}
+                                                <option value="Diğer">Diğer</option>
                                             </select>
                                         </div>
-                                    )}
-                                    {GOLD_TYPES.find(t => t.id === goldType)?.hasWeight && (
-                                        <div className={clsx(!GOLD_TYPES.find(t => t.id === goldType)?.hasCarat && "col-span-2")}>
-                                            <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase">Gram</label>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase tracking-tight">Birim Gram</label>
                                             <input
                                                 type="number"
-                                                value={goldWeight}
-                                                onChange={(e) => {
-                                                    setGoldWeight(e.target.value);
-                                                    setAmount(e.target.value);
-                                                }}
-                                                placeholder="Örn: 10.5"
+                                                value={goldWeightPerUnit}
+                                                onChange={(e) => setGoldWeightPerUnit(e.target.value)}
+                                                placeholder="Örn: 20"
                                                 step="0.01"
                                                 className="w-full px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-800 text-sm font-bold text-text-primary focus:ring-2 focus:ring-amber-500 outline-none"
                                             />
                                         </div>
-                                    )}
-                                    {GOLD_TYPES.find(t => t.id === goldType)?.hasQuantity && (
-                                        <div className="col-span-2">
-                                            <label className="block text-[10px] font-bold text-amber-700 dark:text-amber-400 mb-1 uppercase">Adet</label>
-                                            <input
-                                                type="number"
-                                                value={goldQuantity}
-                                                onChange={(e) => {
-                                                    setGoldQuantity(e.target.value);
-                                                    setAmount(e.target.value);
-                                                }}
-                                                placeholder="Örn: 2"
-                                                className="w-full px-3 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-800 text-sm font-bold text-text-primary focus:ring-2 focus:ring-amber-500 outline-none"
-                                            />
-                                        </div>
-                                    )}
-                                </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -256,7 +241,7 @@ export const EditDebtModal: React.FC<EditDebtModalProps> = ({ isOpen, onClose, d
                             {useManualRate && (
                                 <div className="flex items-center gap-2">
                                     <span className="text-sm text-text-secondary">
-                                        1 {currency === 'GOLD' ? (GOLD_TYPES.find(t => t.id === goldType)?.label || 'Altın') : currency} =
+                                        1 {currency === 'GOLD' ? (getGoldType(goldTypeId)?.label || 'Altın') : currency} =
                                     </span>
                                     <input
                                         type="number"

@@ -82,7 +82,7 @@ export const MetalSelectionFields: React.FC<MetalSelectionFieldsProps> = ({
                     </select>
                 </div>
 
-                {goldCategory !== 'BILEZIK' && (
+                {goldCategory !== 'BILEZIK' && goldCategory !== 'TAKI' && (
                     <div>
                         <label className={clsx(
                             "block text-[10px] font-bold mb-1 uppercase tracking-tight",

@@ -98,14 +98,14 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
 
     // Sync Metal Type ID
     useEffect(() => {
-        if (currency === 'GOLD' && goldCategory === 'BILEZIK') {
-            const model = BILEZIK_MODELS.find(m => m.id === goldSubType);
+        if (currency === 'GOLD' && (goldCategory === 'BILEZIK' || goldCategory === 'TAKI')) {
+            const model = (goldCategory === 'BILEZIK' ? BILEZIK_MODELS : TAKI_TYPES).find(m => m.id === goldSubType);
             const effectiveCarat = model?.fixedCarat || goldCustomCarat;
-            const targetType = `BILEZIK_${effectiveCarat}`;
+            const targetType = `${goldCategory}_${effectiveCarat}`;
             if (GOLD_TYPES.some(t => t.id === targetType)) {
                 setGoldTypeId(targetType);
             } else {
-                setGoldTypeId('BILEZIK_22'); // Fallback
+                setGoldTypeId(`${goldCategory}_22`); // Fallback
             }
         } else if (currency === 'SILVER') {
             // Silver currently only has one category but let's be safe

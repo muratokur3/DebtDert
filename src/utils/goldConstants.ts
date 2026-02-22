@@ -47,7 +47,9 @@ export const GOLD_TYPES: GoldTypeDefinition[] = [
   { id: 'BILEZIK_14', label: '14 Ayar Bilezik', multiplier: 0.5833, category: 'BILEZIK', defaultCarat: 14 },
 
   // TAKILAR
+  { id: 'TAKI_24', label: '24 Ayar Takı', multiplier: 1, category: 'TAKI', defaultCarat: 24 },
   { id: 'TAKI_22', label: '22 Ayar Takı', multiplier: 0.9166, category: 'TAKI', defaultCarat: 22 },
+  { id: 'TAKI_18', label: '18 Ayar Takı', multiplier: 0.750, category: 'TAKI', defaultCarat: 18 },
   { id: 'TAKI_14', label: '14 Ayar Takı', multiplier: 0.5833, category: 'TAKI', defaultCarat: 14 },
   { id: 'TAKI_8', label: '8 Ayar Takı', multiplier: 0.3333, category: 'TAKI', defaultCarat: 8 },
 

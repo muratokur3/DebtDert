@@ -6,6 +6,7 @@ import { Camera, Loader2, Save, ArrowLeft, ShieldCheck, ChevronRight } from 'luc
 import { Avatar } from '../components/Avatar';
 import { useNavigate } from 'react-router-dom';
 import { useModal } from '../context/ModalContext';
+import { formatPhoneForDisplay } from '../utils/phoneUtils';
 
 export const AccountSettings = () => {
     const { user } = useAuth();
@@ -143,7 +144,7 @@ export const AccountSettings = () => {
                                     Telefon Numarası
                                 </label>
                                 <div className="px-4 py-3 rounded-xl bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-500 dark:text-gray-400 flex items-center justify-between">
-                                    <span>{user?.phoneNumber}</span>
+                                    <span>{user?.phoneNumber ? formatPhoneForDisplay(user.phoneNumber) : ''}</span>
                                     <ShieldCheck size={16} className="text-green-500" />
                                 </div>
                                 <p className="text-[10px] text-gray-500 mt-1 ml-1 italic">

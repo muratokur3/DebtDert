@@ -71,7 +71,7 @@ export const PrivacySettings = () => {
         const confirmed = await showConfirm(
             "Hesabı Kalıcı Olarak Sil",
             "Hesabınızı silmek istediğinize emin misiniz? Bu işlem geri alınamaz. Borç kayıtlarınız karşı taraflar için anonimleştirilecektir.",
-            "danger"
+            "error"
         );
 
         if (confirmed) {

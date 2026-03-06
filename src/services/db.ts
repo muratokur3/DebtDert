@@ -258,14 +258,10 @@ export const createDebt = async (
 
     // --- 1. STRICT E.164 ENFORCEMENT ---
     let finalTargetId = targetUserId;
-    let cleanTarget: string | null = null;
-
     if (targetUserId.length < 20) {
         if (!isValidPhone(targetUserId)) {
             throw new Error(`Geçersiz telefon formatı: ${targetUserId}. Borç oluşturmak için geçerli bir E.164 numarası gereklidir.`);
         }
-
-        cleanTarget = targetUserId;
 
         // Ghost User (Registered User) Check
         const { resolvePhoneToUid } = await import('./identity');

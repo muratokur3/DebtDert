@@ -12,6 +12,7 @@ interface AuthContextType {
     user: User | null;
     loading: boolean;
     blockedUsers: BlockRecord[];
+    blockedUsersLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,6 +21,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [blockedUsers, setBlockedUsers] = useState<BlockRecord[]>([]);
+    const [blockedUsersLoading, setBlockedUsersLoading] = useState(true);
 
     useEffect(() => {
         let unsubscribeSnapshot: (() => void) | null = null;
@@ -81,11 +83,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
                 unsubscribeBlocked = subscribeToBlockedUsers(firebaseUser.uid, (blocked) => {
                     setBlockedUsers(blocked);
+                    setBlockedUsersLoading(false);
                 });
 
             } else {
                 setUser(null);
                 setBlockedUsers([]);
+                setBlockedUsersLoading(false);
                 setLoading(false);
             }
         });
@@ -99,12 +103,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     return (
-        <AuthContext.Provider value={{ user, loading, blockedUsers }}>
+        <AuthContext.Provider value={{ user, loading, blockedUsers, blockedUsersLoading }}>
             {children}
         </AuthContext.Provider>
     );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuthContext = () => {
     const context = useContext(AuthContext);
     if (context === undefined) {

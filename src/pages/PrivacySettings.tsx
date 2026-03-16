@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ArrowLeft, Download, Trash2, Shield, Info, FileText, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useModal } from '../context/ModalContext';
@@ -6,6 +7,7 @@ import { exportDebtsToCSV } from '../utils/export';
 import { initiateAccountDeletion } from '../services/accountDeletionService';
 import { useAuth } from '../hooks/useAuth';
 import { deleteAuthUser } from '../services/auth';
+import { PrivacyPolicyModal } from '../components/LegalModals';
 
 const PrivacyRow = ({ icon: Icon, title, description, onClick, variant = 'default' }: {
     icon: React.ElementType;
@@ -50,6 +52,7 @@ export const PrivacySettings = () => {
     const { user } = useAuth();
     const { showConfirm, showAlert } = useModal();
     const { allDebts } = useDebts();
+    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
 
     const handleExport = () => {
         if (allDebts.length === 0) {
@@ -153,7 +156,7 @@ export const PrivacySettings = () => {
                             icon={Info}
                             title="Gizlilik Politikası"
                             description="Verilerinizin nasıl işlendiğini öğrenin."
-                            onClick={() => window.open('https://debtdert.com/privacy', '_blank')}
+                            onClick={() => setIsPrivacyOpen(true)}
                         />
                     </div>
 
@@ -177,6 +180,8 @@ export const PrivacySettings = () => {
                     </div>
                 </div>
             </main>
+
+            <PrivacyPolicyModal isOpen={isPrivacyOpen} onClose={() => setIsPrivacyOpen(false)} />
         </div>
     );
 };

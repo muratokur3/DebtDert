@@ -1,14 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Loader2, MessageSquare, Lock, ArrowLeft, Check, ShieldCheck, User, ArrowRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Loader2, ShieldCheck, User, ArrowRight } from 'lucide-react';
 import { auth, db } from '../services/firebase';
+import { TermsOfServiceModal, PrivacyPolicyModal } from '../components/LegalModals';
 import { RecaptchaVerifier } from 'firebase/auth';
 import type { ConfirmationResult } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { startPhoneLogin, ensureUserDocument, finalizeUserRegistration } from '../services/auth';
+import { startPhoneLogin, finalizeUserRegistration } from '../services/auth';
 import { useModal } from '../context/ModalContext';
 import { useAuth } from '../hooks/useAuth';
-import clsx from 'clsx';
 import { PhoneInput } from '../components/PhoneInput';
 
 type Step = 'PHONE' | 'OTP' | 'DETAILS';
@@ -27,6 +27,10 @@ export const Login = () => {
     const [step, setStep] = useState<Step>('PHONE');
     const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
     const recaptchaVerifier = useRef<RecaptchaVerifier | null>(null);
+
+    // Legal Modals State
+    const [isTermsOpen, setIsTermsOpen] = useState(false);
+    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
 
     useEffect(() => {
         // Initialize Recaptcha
@@ -164,7 +168,8 @@ export const Login = () => {
                             </div>
                             <form onSubmit={handleVerifySms} className="space-y-6">
                                 <input
-                                    type="text"
+                                    type="tel"
+                                    inputMode="numeric"
                                     value={otp}
                                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                     className="w-full text-center text-3xl tracking-[0.5em] font-bold py-4 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary outline-none transition-all"
@@ -229,9 +234,16 @@ export const Login = () => {
                 </div>
 
                 <div className="mt-8 text-center text-xs text-text-secondary">
-                    Giriş yaparak kullanım koşullarını ve gizlilik politikasını kabul etmiş sayılırsınız.
+                    Giriş yaparak{' '}
+                    <button type="button" onClick={() => setIsTermsOpen(true)} className="underline hover:text-text-primary">kullanım koşullarını</button>
+                    {' '}ve{' '}
+                    <button type="button" onClick={() => setIsPrivacyOpen(true)} className="underline hover:text-text-primary">gizlilik politikasını</button>
+                    {' '}kabul etmiş sayılırsınız.
                 </div>
             </div>
+
+            <TermsOfServiceModal isOpen={isTermsOpen} onClose={() => setIsTermsOpen(false)} />
+            <PrivacyPolicyModal isOpen={isPrivacyOpen} onClose={() => setIsPrivacyOpen(false)} />
         </div>
     );
 };

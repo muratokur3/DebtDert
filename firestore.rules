@@ -1,6 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isWithinGracePeriod(createdAt) {
+      return request.time < createdAt + duration.value(1, 'h');
+    }
+
+    function isValidAudit(data) {
+      return !data.keys().hasAny(['auditMeta']) || data.auditMeta.actorId == request.auth.uid;
+    }
+
     match /users/{userId} {
       // Allow reading specific fields for search/list
       // Sentinel: Ensure users can only modify their own profile
@@ -48,65 +56,51 @@ service cloud.firestore {
     }
     
     match /debts/{debtId} {
-      allow read, update: if request.auth != null;
-
-      // CREATE Rule with Block Check
-      // We need to ensure that the requestor (auth.uid) is NOT in the 'blockedUsers' list of the other participant.
-      // Participants array usually has [uid1, uid2].
-      // We can't easily iterate, but usually it's length 2.
-      // If we assume strict 2 participants:
-      // We need to check both potential participants.
-      // However, Firestore Rules limitations make "dynamic" path checks hard if we don't know which one is the "other" one.
-      // But we know 'participants' from request.resource.data.participants.
-      // One is me, one is them.
+      // Security fix: Only participants can read/update
+      allow read: if request.auth != null && request.auth.uid in resource.data.participants;
 
       allow create: if request.auth != null
         && request.auth.uid in request.resource.data.participants
-        // Check 1: Creator must be in participants (Already covered)
+        && request.resource.data.createdBy == request.auth.uid
+        && isValidAudit(request.resource.data);
 
-        // Check 2: The OTHER participant must not have blocked ME.
-        // Since we can't loop, we check for every participant P in the list:
-        // IF P != auth.uid, THEN check if /users/P/blockedUsers/auth.uid exists.
-        // Firestore rules don't support looping, but for a fixed list size (2) we could try.
-        // But participants is an array.
-
-        // Alternative: We trust the client for the "I blocked them" check (which we do in code).
-        // We enforce "They blocked me" check here?
-        // Checking "exists(/databases/$(database)/documents/users/$(otherUid)/blockedUsers/$(request.auth.uid)) == false"
-        // But extracting otherUid is hard.
-
-        // Simplification: We will rely on Cloud Functions or strict client checks + minimal rule support.
-        // Ideally, we'd use a function trigger to validate blocking and delete/reject if found.
-        // For now, we will stick to the basic rules and rely on client + backend-like service checks if possible.
-        // But the prompt ASKED to "Update security rules... if possible".
-        // Let's at least keep the participant check strong.
-        ;
-
-      allow update: if request.auth != null && request.auth.uid in resource.data.participants;
+      allow update: if request.auth != null
+        && request.auth.uid in resource.data.participants
+        && isValidAudit(request.resource.data)
+        && (
+          isWithinGracePeriod(resource.data.createdAt) ||
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['originalAmount', 'currency', 'lenderId', 'borrowerId', 'type', 'createdBy'])
+        );
 
       // Delete Rules:
       // 1. LEDGER type: Both participants can delete
-      // 2. Regular debts: Only creator can delete, within reasonable time
-      // Note: 1-hour rule is enforced in client code via isTransactionEditable
+      // 2. Regular debts: Only creator can delete
+      // Enforces 1-hour hard rule
       allow delete: if request.auth != null && (
         // LEDGER: Both participants can delete
         (resource.data.type == 'LEDGER' && request.auth.uid in resource.data.participants) ||
         // Regular: Only creator can delete
         (resource.data.createdBy == request.auth.uid)
-      );
+      ) && isWithinGracePeriod(resource.data.createdAt);
 
       match /logs/{logId} {
         allow read: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/debts/$(debtId)).data.participants;
-        allow create: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/debts/$(debtId)).data.participants;
+        allow create: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/debts/$(debtId)).data.participants
+                     && request.resource.data.performedBy == request.auth.uid
+                     && isValidAudit(request.resource.data);
       }
       
       // LEDGER Transactions subcollection (Shared Cari Hesap)
       // Both participants have full read/write access for LEDGER type
       match /transactions/{txId} {
         allow read: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/debts/$(debtId)).data.participants;
-        allow create: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/debts/$(debtId)).data.participants;
-        // Only the creator of the transaction can delete it
-        allow delete: if request.auth != null && resource.data.createdBy == request.auth.uid;
+        allow create: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/debts/$(debtId)).data.participants
+                     && request.resource.data.createdBy == request.auth.uid
+                     && isValidAudit(request.resource.data);
+        // Only the creator of the transaction can delete it, within 1 hour
+        allow delete: if request.auth != null && resource.data.createdBy == request.auth.uid
+                     && isWithinGracePeriod(resource.data.createdAt);
       }
     }
 

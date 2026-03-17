@@ -1,4 +1,11 @@
-import { collection, getDocs, doc as firestoreDoc, Timestamp } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  getDoc,
+  doc as firestoreDoc
+} from 'firebase/firestore';
 import { db } from './firebase';
 import type { Debt, Transaction, User, Contact } from '../types';
 
@@ -17,6 +24,7 @@ export interface ExportData {
 
 /**
  * Export all user data as JSON
+ * Optimised for scalability using targeted queries
  */
 export async function exportUserDataAsJSON(userId: string): Promise<string> {
   const exportData: ExportData = {
@@ -25,47 +33,52 @@ export async function exportUserDataAsJSON(userId: string): Promise<string> {
     debts: [],
     transactions: [],
     exportDate: new Date().toISOString(),
-    version: '1.0'
+    version: '1.1'
   };
 
   try {
-    // Fetch user data
-    const userDoc = await getDocs(collection(db, 'users'));
-    const userData = userDoc.docs.find(d => d.id === userId)?.data() as User;
-    if (userData) {
-      exportData.user = { ...userData, uid: userId };
+    // 1. Fetch user profile data
+    const userRef = firestoreDoc(db, 'users', userId);
+    const userSnap = await getDoc(userRef);
+    if (userSnap.exists()) {
+      exportData.user = { ...userSnap.data(), uid: userId } as User;
     }
 
-    // Fetch contacts
+    // 2. Fetch contacts (subcollection is already targeted)
     const contactsSnapshot = await getDocs(collection(db, `users/${userId}/contacts`));
     exportData.contacts = contactsSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     } as Contact));
 
-    // Fetch debts
-    const debtsSnapshot = await getDocs(collection(db, 'debts'));
-    exportData.debts = debtsSnapshot.docs
-      .filter(doc => {
-        const data = doc.data();
-        return data.borrowerId === userId || data.lenderId === userId;
-      })
-      .map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Debt));
+    // 3. Fetch debts (Targeted query using participants)
+    const debtsQuery = query(
+      collection(db, 'debts'),
+      where('participants', 'array-contains', userId)
+    );
+    const debtsSnapshot = await getDocs(debtsQuery);
+    exportData.debts = debtsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as Debt));
 
-    // Fetch transactions
-    const transactionsSnapshot = await getDocs(collection(db, 'transactions'));
-    exportData.transactions = transactionsSnapshot.docs
-      .filter(doc => {
-        const data = doc.data();
-        return data.fromUserId === userId || data.toUserId === userId;
-      })
-      .map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Transaction));
+    // 4. Fetch global transactions (where user is sender or receiver)
+    // Note: We perform two queries because Firestore doesn't support 'OR' queries on different fields easily
+    // without composite indexes, but 'where' combined with in-memory merging is efficient here.
+    const txFromQuery = query(collection(db, 'transactions'), where('fromUserId', '==', userId));
+    const txToQuery = query(collection(db, 'transactions'), where('toUserId', '==', userId));
+
+    const [txFromSnap, txToSnap] = await Promise.all([
+      getDocs(txFromQuery),
+      getDocs(txToQuery)
+    ]);
+
+    const txMap = new Map<string, Transaction>();
+
+    txFromSnap.docs.forEach(doc => txMap.set(doc.id, { id: doc.id, ...doc.data() } as Transaction));
+    txToSnap.docs.forEach(doc => txMap.set(doc.id, { id: doc.id, ...doc.data() } as Transaction));
+
+    exportData.transactions = Array.from(txMap.values());
 
     return JSON.stringify(exportData, null, 2);
   } catch (error) {
@@ -97,8 +110,3 @@ export async function exportAndDownloadUserData(userId: string) {
   const timestamp = new Date().toISOString().split('T')[0];
   downloadJSON(jsonData, `debtdert_export_${timestamp}.json`);
 }
-
-/**
- * FUTURE: PDF Export (requires additional library like jsPDF)
- * For now, users can print the JSON or use external tools
- */

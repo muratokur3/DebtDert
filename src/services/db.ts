@@ -367,57 +367,73 @@ export const createDebt = async (
         }
     };
 
-    const docRef = await addDoc(collection(db, 'debts'), cleanObject(debtData));
+    const batch = writeBatch(db); // Master Firestore batch for debt, rate limit, and logs
 
-    // Create notification
-    // We use the resolved UID to send notifications, not the raw counterpartyId
-    const otherPartyId = blockCheckTargetUid;
-    const isLedger = debtData.type === 'LEDGER';
+    let docRef;
+    try {
+        docRef = doc(collection(db, 'debts'));
+        batch.set(docRef, cleanObject(debtData));
 
-    // Recipient is the other party. Actor is Me.
-    // If other party has no UID, or if it is a SHADOW record (AUTO_HIDDEN due to block), we don't send notification.
-    if (otherPartyId && otherPartyId.length > 20 && initialStatus !== 'AUTO_HIDDEN') {
-        notificationService.addNotification({
-            userId: otherPartyId,
-            actorId: currentUserId,
-            type: 'DEBT_CREATED',
-            message: isLedger
-                ? `${currentUserName} sizinle yeni cari hesap oluşturdu.`
-                : `${currentUserName} tarafından ${amount} ${currency} borç kaydı oluşturuldu.`,
-            amount: isLedger ? undefined : amount,
-            currency,
-            debtId: docRef.id
-        }).catch(err => console.warn("Initial debt notification failed:", err));
-    }
-
-    const batch = writeBatch(db); // Firestore batch for logs
-
-    // Log 1: Creation
-    const log1Ref = doc(collection(db, `debts/${docRef.id}/logs`));
-    batch.set(log1Ref, { // Using setDoc for specific ID if generated, or just addDoc. Batch needs ref.
-        type: 'INITIAL_CREATION',
-        previousRemaining: amount,
-        newRemaining: amount,
-        performedBy: currentUserId,
-        timestamp: serverTimestamp(),
-        note: 'Borç oluşturuldu',
-    });
-
-    // Log 2: Initial Payment (if any)
-    if (initialPayment > 0) {
-        const log2Ref = doc(collection(db, `debts/${docRef.id}/logs`));
-        batch.set(log2Ref, {
-            type: 'PAYMENT',
-            amountPaid: initialPayment,
+        // Log 1: Creation
+        const log1Ref = doc(collection(db, `debts/${docRef.id}/logs`));
+        batch.set(log1Ref, { // Using setDoc for specific ID if generated, or just addDoc. Batch needs ref.
+            type: 'INITIAL_CREATION',
             previousRemaining: amount,
-            newRemaining: remainingAmount,
+            newRemaining: amount,
             performedBy: currentUserId,
-            timestamp: serverTimestamp(), // Ideally slightly after, but serverTimestamp is resolution
-            note: 'Peşinat / İlk Ödeme'
+            timestamp: serverTimestamp(),
+            note: 'Borç oluşturuldu',
         });
-    }
 
-    await batch.commit();
+        // Log 2: Initial Payment (if any)
+        if (initialPayment > 0) {
+            const log2Ref = doc(collection(db, `debts/${docRef.id}/logs`));
+            batch.set(log2Ref, {
+                type: 'PAYMENT',
+                amountPaid: initialPayment,
+                previousRemaining: amount,
+                newRemaining: remainingAmount,
+                performedBy: currentUserId,
+                timestamp: serverTimestamp(), // Ideally slightly after, but serverTimestamp is resolution
+                note: 'Peşinat / İlk Ödeme'
+            });
+        }
+
+        // Update rate limit metadata in the exact same transaction
+        const rateLimitRef = doc(db, `users/${currentUserId}/metadata/rateLimit`);
+        batch.set(rateLimitRef, { lastDebtCreated: serverTimestamp() }, { merge: true });
+
+        await batch.commit();
+
+        // Create notification AFTER successful commit
+        // We use the resolved UID to send notifications, not the raw counterpartyId
+        const otherPartyId = blockCheckTargetUid;
+        const isLedger = debtData.type === 'LEDGER';
+
+        // Recipient is the other party. Actor is Me.
+        // If other party has no UID, or if it is a SHADOW record (AUTO_HIDDEN due to block), we don't send notification.
+        if (otherPartyId && otherPartyId.length > 20 && initialStatus !== 'AUTO_HIDDEN') {
+            notificationService.addNotification({
+                userId: otherPartyId,
+                actorId: currentUserId,
+                type: 'DEBT_CREATED',
+                message: isLedger
+                    ? `${currentUserName} sizinle yeni cari hesap oluşturdu.`
+                    : `${currentUserName} tarafından ${amount} ${currency} borç kaydı oluşturuldu.`,
+                amount: isLedger ? undefined : amount,
+                currency,
+                debtId: docRef.id
+            }).catch(err => console.warn("Initial debt notification failed:", err));
+        }
+    } catch (error: unknown) {
+        if (error && typeof error === 'object') {
+            const err = error as { code?: string; message?: string };
+            if (err.code === 'permission-denied' || (err.message && err.message.includes('permission'))) {
+                throw new Error("Lütfen 30 saniye bekleyiniz veya işlemi kontrol ediniz.");
+            }
+        }
+        throw error;
+    }
 
     // Auto-Contact Creation Logic
     // If I am the Creator (always true here as currentUserId), and the counterparty is NOT me

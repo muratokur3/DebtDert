@@ -1,8 +1,9 @@
-import { ArrowLeft, Download, Trash2, Shield, Info, FileText, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Download, Trash2, Shield, Info, FileText, ChevronRight, FileJson } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useModal } from '../context/ModalContext';
 import { useDebts } from '../hooks/useDebts';
 import { exportDebtsToCSV } from '../utils/export';
+import { exportAndDownloadUserData } from '../services/exportService';
 import { initiateAccountDeletion } from '../services/accountDeletionService';
 import { useAuth } from '../hooks/useAuth';
 import { deleteAuthUser } from '../services/auth';
@@ -51,12 +52,23 @@ export const PrivacySettings = () => {
     const { showConfirm, showAlert } = useModal();
     const { allDebts } = useDebts();
 
-    const handleExport = () => {
+    const handleCSVExport = () => {
         if (allDebts.length === 0) {
             showAlert('Bilgi', 'Dışa aktarılacak borç bulunamadı.', 'info');
             return;
         }
         exportDebtsToCSV(allDebts);
+    };
+
+    const handleJSONExport = async () => {
+        if (!user) return;
+        try {
+            await exportAndDownloadUserData(user.uid);
+            showAlert("Başarılı", "Verileriniz JSON formatında hazırlandı ve indiriliyor.", "success");
+        } catch (error) {
+            console.error("JSON Export error:", error);
+            showAlert("Hata", "Veri dışa aktarımı sırasında bir sorun oluştu.", "error");
+        }
     };
 
     const handleDataRequest = () => {
@@ -135,13 +147,19 @@ export const PrivacySettings = () => {
                     <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden divide-y divide-gray-100 dark:divide-slate-800">
                         <PrivacyRow
                             icon={Download}
-                            title="Verilerimi İndir"
-                            description="Tüm borç ve işlem geçmişinizi CSV formatında indirin."
-                            onClick={handleExport}
+                            title="Borç Listesini İndir (CSV)"
+                            description="Mevcut borçlarınızı hızlı liste formatında CSV olarak indirin."
+                            onClick={handleCSVExport}
+                        />
+                        <PrivacyRow
+                            icon={FileJson}
+                            title="Tüm Verileri İndir (JSON)"
+                            description="İşlem geçmişi ve rehber dahil tüm ham verilerinizi JSON formatında indirin."
+                            onClick={handleJSONExport}
                         />
                         <PrivacyRow
                             icon={FileText}
-                            title="Hesap Verileri Talebi"
+                            title="Resmi Veri Talebi"
                             description="GDPR kapsamında tüm verilerinizin kopyasını talep edin."
                             onClick={handleDataRequest}
                         />

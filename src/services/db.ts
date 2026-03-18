@@ -367,7 +367,45 @@ export const createDebt = async (
         }
     };
 
-    const docRef = await addDoc(collection(db, 'debts'), cleanObject(debtData));
+    const debtRef = doc(collection(db, 'debts'));
+    const batch = writeBatch(db);
+
+    // 1. Create Debt Document
+    batch.set(debtRef, cleanObject(debtData));
+
+    // 2. Update Rate Limit Metadata (for security rules enforcement)
+    const rateLimitRef = doc(db, 'users', currentUserId, 'metadata', 'rateLimit');
+    batch.set(rateLimitRef, {
+        lastDebtCreated: serverTimestamp()
+    }, { merge: true });
+
+    // 3. Log 1: Creation
+    const log1Ref = doc(collection(db, `debts/${debtRef.id}/logs`));
+    batch.set(log1Ref, {
+        type: 'INITIAL_CREATION',
+        previousRemaining: amount,
+        newRemaining: amount,
+        performedBy: currentUserId,
+        timestamp: serverTimestamp(),
+        note: 'Borç oluşturuldu',
+    });
+
+    // 4. Log 2: Initial Payment (if any)
+    if (initialPayment > 0) {
+        const log2Ref = doc(collection(db, `debts/${debtRef.id}/logs`));
+        batch.set(log2Ref, {
+            type: 'PAYMENT',
+            amountPaid: initialPayment,
+            previousRemaining: amount,
+            newRemaining: remainingAmount,
+            performedBy: currentUserId,
+            timestamp: serverTimestamp(),
+            note: 'Peşinat / İlk Ödeme'
+        });
+    }
+
+    // Atomic Commit
+    await batch.commit();
 
     // Create notification
     // We use the resolved UID to send notifications, not the raw counterpartyId
@@ -386,38 +424,9 @@ export const createDebt = async (
                 : `${currentUserName} tarafından ${amount} ${currency} borç kaydı oluşturuldu.`,
             amount: isLedger ? undefined : amount,
             currency,
-            debtId: docRef.id
+            debtId: debtRef.id
         }).catch(err => console.warn("Initial debt notification failed:", err));
     }
-
-    const batch = writeBatch(db); // Firestore batch for logs
-
-    // Log 1: Creation
-    const log1Ref = doc(collection(db, `debts/${docRef.id}/logs`));
-    batch.set(log1Ref, { // Using setDoc for specific ID if generated, or just addDoc. Batch needs ref.
-        type: 'INITIAL_CREATION',
-        previousRemaining: amount,
-        newRemaining: amount,
-        performedBy: currentUserId,
-        timestamp: serverTimestamp(),
-        note: 'Borç oluşturuldu',
-    });
-
-    // Log 2: Initial Payment (if any)
-    if (initialPayment > 0) {
-        const log2Ref = doc(collection(db, `debts/${docRef.id}/logs`));
-        batch.set(log2Ref, {
-            type: 'PAYMENT',
-            amountPaid: initialPayment,
-            previousRemaining: amount,
-            newRemaining: remainingAmount,
-            performedBy: currentUserId,
-            timestamp: serverTimestamp(), // Ideally slightly after, but serverTimestamp is resolution
-            note: 'Peşinat / İlk Ödeme'
-        });
-    }
-
-    await batch.commit();
 
     // Auto-Contact Creation Logic
     // If I am the Creator (always true here as currentUserId), and the counterparty is NOT me
@@ -439,7 +448,7 @@ export const createDebt = async (
         }
     }
 
-    return docRef.id;
+    return debtRef.id;
 };
 
 /**

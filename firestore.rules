@@ -1,6 +1,11 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // --- Helper Functions ---
+    function isWithinGracePeriod(createdAt) {
+      return request.time < createdAt + duration.value(3600, 's');
+    }
+
     match /users/{userId} {
       // Allow reading specific fields for search/list
       // Sentinel: Ensure users can only modify their own profile
@@ -48,51 +53,34 @@ service cloud.firestore {
     }
     
     match /debts/{debtId} {
-      allow read, update: if request.auth != null;
+      // Only participants can read
+      allow read: if request.auth != null && request.auth.uid in resource.data.participants;
 
-      // CREATE Rule with Block Check
-      // We need to ensure that the requestor (auth.uid) is NOT in the 'blockedUsers' list of the other participant.
-      // Participants array usually has [uid1, uid2].
-      // We can't easily iterate, but usually it's length 2.
-      // If we assume strict 2 participants:
-      // We need to check both potential participants.
-      // However, Firestore Rules limitations make "dynamic" path checks hard if we don't know which one is the "other" one.
-      // But we know 'participants' from request.resource.data.participants.
-      // One is me, one is them.
-
+      // Create: Creator must be a participant
       allow create: if request.auth != null
-        && request.auth.uid in request.resource.data.participants
-        // Check 1: Creator must be in participants (Already covered)
+        && request.auth.uid in request.resource.data.participants;
 
-        // Check 2: The OTHER participant must not have blocked ME.
-        // Since we can't loop, we check for every participant P in the list:
-        // IF P != auth.uid, THEN check if /users/P/blockedUsers/auth.uid exists.
-        // Firestore rules don't support looping, but for a fixed list size (2) we could try.
-        // But participants is an array.
+      // Update: Participants only.
+      // Sensitive fields are immutable after 1 hour (Grace Period).
+      allow update: if request.auth != null && request.auth.uid in resource.data.participants
+        && (
+          isWithinGracePeriod(resource.data.createdAt) ||
+          (
+            request.resource.data.originalAmount == resource.data.originalAmount &&
+            request.resource.data.currency == resource.data.currency &&
+            request.resource.data.lenderId == resource.data.lenderId &&
+            request.resource.data.borrowerId == resource.data.borrowerId &&
+            request.resource.data.type == resource.data.type &&
+            request.resource.data.createdBy == resource.data.createdBy
+          )
+        );
 
-        // Alternative: We trust the client for the "I blocked them" check (which we do in code).
-        // We enforce "They blocked me" check here?
-        // Checking "exists(/databases/$(database)/documents/users/$(otherUid)/blockedUsers/$(request.auth.uid)) == false"
-        // But extracting otherUid is hard.
-
-        // Simplification: We will rely on Cloud Functions or strict client checks + minimal rule support.
-        // Ideally, we'd use a function trigger to validate blocking and delete/reject if found.
-        // For now, we will stick to the basic rules and rely on client + backend-like service checks if possible.
-        // But the prompt ASKED to "Update security rules... if possible".
-        // Let's at least keep the participant check strong.
-        ;
-
-      allow update: if request.auth != null && request.auth.uid in resource.data.participants;
-
-      // Delete Rules:
-      // 1. LEDGER type: Both participants can delete
-      // 2. Regular debts: Only creator can delete, within reasonable time
-      // Note: 1-hour rule is enforced in client code via isTransactionEditable
+      // Delete:
+      // 1. LEDGER type: Both participants can delete anytime
+      // 2. Regular: Only creator can delete, within 1 hour
       allow delete: if request.auth != null && (
-        // LEDGER: Both participants can delete
         (resource.data.type == 'LEDGER' && request.auth.uid in resource.data.participants) ||
-        // Regular: Only creator can delete
-        (resource.data.createdBy == request.auth.uid)
+        (resource.data.createdBy == request.auth.uid && isWithinGracePeriod(resource.data.createdAt))
       );
 
       match /logs/{logId} {
@@ -101,12 +89,24 @@ service cloud.firestore {
       }
       
       // LEDGER Transactions subcollection (Shared Cari Hesap)
-      // Both participants have full read/write access for LEDGER type
       match /transactions/{txId} {
         allow read: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/debts/$(debtId)).data.participants;
         allow create: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/debts/$(debtId)).data.participants;
-        // Only the creator of the transaction can delete it
-        allow delete: if request.auth != null && resource.data.createdBy == request.auth.uid;
+
+        // Update: Allow PII redaction (createdBy, note) while protecting financial data
+        allow update: if request.auth != null && request.auth.uid in get(/databases/$(database)/documents/debts/$(debtId)).data.participants
+                     && (
+                       isWithinGracePeriod(resource.data.createdAt) ||
+                       (
+                         request.resource.data.amount == resource.data.amount &&
+                         request.resource.data.type == resource.data.type
+                       )
+                     );
+
+        // Delete: Only the creator of the transaction can delete it, and only within grace period
+        // For GDPR, they can always redaction via update, but deletion is limited to the grace period.
+        allow delete: if request.auth != null && resource.data.createdBy == request.auth.uid
+                     && isWithinGracePeriod(resource.data.createdAt);
       }
     }
 
@@ -121,8 +121,6 @@ service cloud.firestore {
       // Public lookup for existence check (by hashed phone number)
       allow get: if true;
       // Only authenticated users can register their phone
-      // And they can only register a mapping to their own UID.
-      // We also prevent overwriting existing entries to avoid hijacking.
       allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
       // Allow update only if the user owns the existing entry (prevents hijacking)
       allow update: if request.auth != null && resource.data.uid == request.auth.uid;

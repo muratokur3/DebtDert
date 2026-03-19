@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, ShieldCheck, User, ArrowRight, Smartphone } from 'lucide-react';
+import { Loader2, ShieldCheck, User, ArrowRight } from 'lucide-react';
 import { auth, db } from '../services/firebase';
+import { TermsOfServiceModal, PrivacyPolicyModal } from '../components/LegalModals';
 import { RecaptchaVerifier } from 'firebase/auth';
 import type { ConfirmationResult } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
@@ -9,8 +10,6 @@ import { startPhoneLogin, finalizeUserRegistration } from '../services/auth';
 import { useModal } from '../context/ModalContext';
 import { useAuth } from '../hooks/useAuth';
 import { PhoneInput } from '../components/PhoneInput';
-import { formatPhoneForDisplay } from '../utils/phoneUtils';
-import { TermsOfServiceModal, PrivacyPolicyModal } from '../components/LegalModals';
 
 type Step = 'PHONE' | 'OTP' | 'DETAILS';
 
@@ -18,10 +17,6 @@ export const Login = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const { showAlert } = useModal();
-
-    // Modals
-    const [isTermsOpen, setIsTermsOpen] = useState(false);
-    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
 
     // Form Data
     const [phone, setPhone] = useState('');
@@ -32,6 +27,10 @@ export const Login = () => {
     const [step, setStep] = useState<Step>('PHONE');
     const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
     const recaptchaVerifier = useRef<RecaptchaVerifier | null>(null);
+
+    // Legal Modals State
+    const [isTermsOpen, setIsTermsOpen] = useState(false);
+    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
 
     useEffect(() => {
         // Initialize Recaptcha
@@ -124,17 +123,18 @@ export const Login = () => {
                     <p className="text-text-secondary">Güvenli ve Kolay Borç Takibi</p>
                 </div>
 
+                <div className="flex justify-center mb-4">
+                    {loading && <Loader2 className="animate-spin text-primary" size={32} />}
+                </div>
+
                 <div id="login-recaptcha"></div>
 
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
                     {step === 'PHONE' && (
                         <div className="space-y-6">
                             <div className="text-center">
-                                <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                    <Smartphone size={32} className="text-primary" />
-                                </div>
-                                <h2 className="text-2xl font-extrabold text-text-primary">Giriş Yap</h2>
-                                <p className="text-text-secondary text-sm mt-1">Telefon numaranızla hemen başlayın</p>
+                                <h2 className="text-xl font-bold text-text-primary">Giriş Yap</h2>
+                                <p className="text-text-secondary text-sm">Telefon numaranızla hemen başlayın</p>
                             </div>
                             <form onSubmit={handleSendSms} className="space-y-6">
                                 <div className="space-y-2">
@@ -162,18 +162,14 @@ export const Login = () => {
                             <div className="text-center">
                                 <ShieldCheck size={48} className="mx-auto text-primary mb-2 opacity-80" />
                                 <h2 className="text-xl font-bold text-text-primary">Kodu Doğrula</h2>
-                                <div className="text-text-secondary text-sm mt-2">
-                                    <div className="font-bold text-text-primary text-base mb-1">
-                                        {formatPhoneForDisplay(phone)}
-                                    </div>
-                                    <div>numarasına gelen kodu girin.</div>
-                                </div>
+                                <p className="text-text-secondary text-sm">
+                                    {phone} numarasına gelen kodu girin.
+                                </p>
                             </div>
                             <form onSubmit={handleVerifySms} className="space-y-6">
                                 <input
                                     type="tel"
                                     inputMode="numeric"
-                                    pattern="[0-9]*"
                                     value={otp}
                                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                     className="w-full text-center text-3xl tracking-[0.5em] font-bold py-4 rounded-xl border border-slate-700 bg-background text-text-primary focus:border-primary outline-none transition-all"
@@ -237,21 +233,11 @@ export const Login = () => {
                     )}
                 </div>
 
-                <div className="mt-8 text-center text-[10px] leading-relaxed text-text-secondary px-4">
-                    Devam ederek{' '}
-                    <button
-                        onClick={() => setIsTermsOpen(true)}
-                        className="text-primary hover:underline font-medium"
-                    >
-                        Kullanım Koşullarını
-                    </button>
+                <div className="mt-8 text-center text-xs text-text-secondary">
+                    Giriş yaparak{' '}
+                    <button type="button" onClick={() => setIsTermsOpen(true)} className="underline hover:text-text-primary">kullanım koşullarını</button>
                     {' '}ve{' '}
-                    <button
-                        onClick={() => setIsPrivacyOpen(true)}
-                        className="text-primary hover:underline font-medium"
-                    >
-                        Gizlilik Politikasını
-                    </button>
+                    <button type="button" onClick={() => setIsPrivacyOpen(true)} className="underline hover:text-text-primary">gizlilik politikasını</button>
                     {' '}kabul etmiş sayılırsınız.
                 </div>
             </div>

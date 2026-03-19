@@ -126,6 +126,8 @@ service cloud.firestore {
       allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
       // Allow update only if the user owns the existing entry (prevents hijacking)
       allow update: if request.auth != null && resource.data.uid == request.auth.uid;
+      // Allow delete only if the user owns the entry
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
   }
 }

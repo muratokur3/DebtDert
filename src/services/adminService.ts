@@ -25,6 +25,7 @@ export interface AdminFeedback extends Omit<Feedback, 'createdAt'> {
 }
 
 export interface AdminDebtSummary {
+    id: string;
     lenderName: string;
     borrowerName: string;
     originalAmount: number;

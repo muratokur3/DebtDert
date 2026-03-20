@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useModal } from '../context/ModalContext';
 import { useDebts } from '../hooks/useDebts';
 import { exportDebtsToCSV } from '../utils/export';
+import { exportAndDownloadUserData } from '../services/exportService';
 import { initiateAccountDeletion } from '../services/accountDeletionService';
 import { useAuth } from '../hooks/useAuth';
 import { deleteAuthUser } from '../services/auth';
@@ -59,12 +60,16 @@ export const PrivacySettings = () => {
         exportDebtsToCSV(allDebts);
     };
 
-    const handleDataRequest = () => {
-        showAlert(
-            "Veri Talebi",
-            "Hesap verilerinizin tamamını içeren detaylı bir rapor talep etmek için destek@debtdert.com adresine kayıtlı telefon numaranızla birlikte e-posta gönderebilirsiniz. Talebiniz 30 gün içinde karşılanacaktır.",
-            "info"
-        );
+    const handleDataRequest = async () => {
+        if (!user) return;
+
+        try {
+            showAlert("Bilgi", "Verileriniz hazırlanıyor. Lütfen bekleyin.", "info");
+            await exportAndDownloadUserData(user.uid);
+        } catch (error) {
+            console.error("Export error:", error);
+            showAlert("Hata", "Veri dışa aktarılırken bir hata oluştu.", "error");
+        }
     };
 
     const handleDeleteAccount = async () => {
@@ -142,7 +147,7 @@ export const PrivacySettings = () => {
                         <PrivacyRow
                             icon={FileText}
                             title="Hesap Verileri Talebi"
-                            description="GDPR kapsamında tüm verilerinizin kopyasını talep edin."
+                            description="GDPR kapsamında tüm verilerinizin kopyasını JSON formatında indirin."
                             onClick={handleDataRequest}
                         />
                     </div>

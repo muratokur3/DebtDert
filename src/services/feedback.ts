@@ -47,7 +47,7 @@ export const sendFeedback = async (
             title,
             description,
             createdAt: serverTimestamp(),
-            appVersion: '0.1.0',
+            appVersion: __APP_VERSION__,
             deviceInfo: navigator.userAgent,
             pagePath,
             platform,

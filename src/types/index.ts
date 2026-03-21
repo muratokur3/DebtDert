@@ -1,5 +1,9 @@
 import { Timestamp } from 'firebase/firestore';
 
+declare global {
+  const __APP_VERSION__: string;
+}
+
 export type UserType = 'INDIVIDUAL' | 'BUSINESS';
 
 export interface AuditMeta {

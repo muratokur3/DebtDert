@@ -29,7 +29,6 @@ export const getSystemDeviceId = (): string => {
     localStorage.setItem(DEVICE_ID_KEY, deviceId);
   }
 
-  // TODO: In React Native, replace this with react-native-device-info.getUniqueId()
   return deviceId;
 };
 
@@ -62,7 +61,7 @@ export const registerSession = async (userId: string): Promise<void> => {
     platform,
     deviceName,
     lastActiveAt: serverTimestamp(),
-    appVersion: '0.1.0', // TODO: Get this from package.json or environment
+    appVersion: __APP_VERSION__,
     // pushToken: "..." // Placeholder for future Notifications
   }, { merge: true }).catch(err => {
     console.error("Failed to register session:", err);

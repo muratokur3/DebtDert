@@ -35,7 +35,49 @@ export interface Notification {
     createdAt: Timestamp;
 }
 
+import { getToken } from 'firebase/messaging';
+import { getMessagingInstance, firebaseConfig } from './firebase';
+import { getSystemDeviceId } from './session';
+
 export const notificationService = {
+    async requestNotificationPermissionAndToken(userId: string): Promise<boolean> {
+        try {
+            if (!('Notification' in window) || !navigator.serviceWorker) {
+                console.warn('Notifications not supported in this browser.');
+                return false;
+            }
+
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                console.log('Notification permission not granted.');
+                return false;
+            }
+
+            const msgInstance = await getMessagingInstance();
+            if (!msgInstance) return false;
+
+            const configUrlParam = encodeURIComponent(JSON.stringify(firebaseConfig));
+            await navigator.serviceWorker.register(`/firebase-messaging-sw.js?config=${configUrlParam}`);
+            const registration = await navigator.serviceWorker.ready;
+
+            const pushToken = await getToken(msgInstance, {
+                serviceWorkerRegistration: registration,
+                vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY
+            });
+
+            if (pushToken) {
+                // Update the current session with the new token
+                const deviceId = getSystemDeviceId();
+                const sessionRef = doc(db, `users/${userId}/sessions/${deviceId}`);
+                await updateDoc(sessionRef, { pushToken });
+                return true;
+            }
+        } catch (error) {
+            console.error('Failed to request notification permission:', error);
+        }
+        return false;
+    },
+
     async addNotification(params: {
         userId: string;
         actorId: string;

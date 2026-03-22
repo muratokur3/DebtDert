@@ -3,6 +3,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
+import { getMessaging, isSupported } from 'firebase/messaging';
 
 export const firebaseConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -18,3 +19,16 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const functions = getFunctions(app);
+
+// Initialize messaging safely and export a promise so callers can await it
+export const getMessagingInstance = async (): Promise<ReturnType<typeof getMessaging> | null> => {
+    try {
+        const supported = await isSupported();
+        if (supported) {
+            return getMessaging(app);
+        }
+    } catch (err) {
+        console.error('Messaging not supported', err);
+    }
+    return null;
+};

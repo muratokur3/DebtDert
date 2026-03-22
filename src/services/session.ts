@@ -1,7 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { UAParser } from 'ua-parser-js';
 import { doc, setDoc, serverTimestamp, onSnapshot, collection, getDocs, deleteDoc, Timestamp } from 'firebase/firestore';
-import { db, auth } from './firebase';
+import { getToken } from 'firebase/messaging';
+import { db, auth, firebaseConfig, getMessagingInstance } from './firebase';
 
 const DEVICE_ID_KEY = 'debt_app_device_uuid';
 const ACTIVE_USER_KEY = 'active_user_id';
@@ -54,6 +55,27 @@ export const registerSession = async (userId: string): Promise<void> => {
   if (os.includes('ios')) platform = 'ios';
   if (os.includes('android')) platform = 'android';
 
+  // Only attempt to get FCM Token if permission is already granted.
+  // We do not prompt here, as modern browsers require a user gesture.
+  let pushToken = null;
+  try {
+    const msgInstance = await getMessagingInstance();
+
+    if (msgInstance && 'Notification' in window && navigator.serviceWorker && Notification.permission === 'granted') {
+      const configUrlParam = encodeURIComponent(JSON.stringify(firebaseConfig));
+      await navigator.serviceWorker.register(`/firebase-messaging-sw.js?config=${configUrlParam}`);
+
+      const registration = await navigator.serviceWorker.ready;
+
+      pushToken = await getToken(msgInstance, {
+        serviceWorkerRegistration: registration,
+        vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY // Optional if set in env, else uses default Firebase project key
+      });
+    }
+  } catch (err) {
+    console.warn("Failed to get FCM push token during session registration:", err);
+  }
+
   const sessionRef = doc(db, `users/${userId}/sessions/${deviceId}`);
 
   // Non-blocking write
@@ -63,7 +85,7 @@ export const registerSession = async (userId: string): Promise<void> => {
     deviceName,
     lastActiveAt: serverTimestamp(),
     appVersion: '0.1.0', // TODO: Get this from package.json or environment
-    // pushToken: "..." // Placeholder for future Notifications
+    ...(pushToken && { pushToken })
   }, { merge: true }).catch(err => {
     console.error("Failed to register session:", err);
   });

@@ -845,6 +845,7 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                                         </span>
                                         <input
                                             type="number"
+                                            inputMode="decimal"
                                             value={manualRate}
                                             onChange={(e) => setManualRate(e.target.value)}
                                             step="0.01"
@@ -948,6 +949,8 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
                                                         <label className="block text-xs font-medium text-text-secondary mb-1">Taksit Sayısı</label>
                                                         <input
                                                             type="number"
+                                                            inputMode="numeric"
+                                                            pattern="[0-9]*"
                                                             value={installmentCount}
                                                             onChange={(e) => setInstallmentCount(parseInt(e.target.value))}
                                                             min={2}

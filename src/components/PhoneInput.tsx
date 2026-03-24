@@ -140,6 +140,8 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
                 </div>
                 <input
                     type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={localNumber}
                     onChange={handleNumberChange}
                     disabled={disabled}

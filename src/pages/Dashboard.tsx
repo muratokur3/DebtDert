@@ -568,7 +568,7 @@ export const Dashboard = () => {
                     <div className="flex items-center gap-2">
                         <img src="/logo.svg" alt="Odeyn" className="w-8 h-8 rounded-lg shadow-sm" />
                         <span className="text-xl font-bold text-gray-900 dark:text-white tracking-tight leading-none">
-                            Ode<span className="text-teal-600 dark:text-teal-400">yn</span>
+                            O<span className="text-teal-600 dark:text-teal-400">deyn</span>
                         </span>
                     </div>
                 </div>

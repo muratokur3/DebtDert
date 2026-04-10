@@ -8,6 +8,8 @@ import { Toggle } from '../components/Toggle';
 import { useModal } from '../context/ModalContext';
 import { Avatar } from '../components/Avatar';
 import { useTheme } from '../context/ThemeContext';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { logoutUser } from '../services/auth';
 
 
@@ -53,34 +55,33 @@ export const Settings = () => {
     const { showConfirm } = useModal();
     const { theme, toggleTheme } = useTheme();
 
-    // Local State
+    // Local State - settings.contactSyncEnabled (doğru alan)
     const [syncContacts, setSyncContacts] = useState(false);
-    const userSyncPref = user?.preferences?.syncContacts;
-    
+    const userSyncSetting = user?.settings?.contactSyncEnabled;
+
     // Pattern to sync state from props (derived state)
-     
-    const [prevPref, setPrevPref] = useState(userSyncPref);
-    
-    if (userSyncPref !== prevPref) {
-        setPrevPref(userSyncPref);
-        if (userSyncPref !== undefined) {
-            setSyncContacts(userSyncPref);
+    const [prevPref, setPrevPref] = useState(userSyncSetting);
+
+    if (userSyncSetting !== prevPref) {
+        setPrevPref(userSyncSetting);
+        if (userSyncSetting !== undefined) {
+            setSyncContacts(userSyncSetting);
         }
     }
 
     // Persist Helpers
-    const toggleSetting = async (key: keyof NonNullable<UserType['preferences']>, value: boolean, setter: (val: boolean) => void) => {
+    const toggleSetting = async (_key: keyof NonNullable<UserType['preferences']>, value: boolean, setter: (val: boolean) => void) => {
         setter(value); // Optimistic update
         if (user) {
             try {
-                // Update Firestore
-                await updateUserPreferences(user.uid, {
-                    ...user.preferences,
-                    [key]: value
-                });
+                // settings.contactSyncEnabled alanına yaz (doğru alan)
+                const userRef = doc(db, 'users', user.uid);
+                await setDoc(userRef, {
+                    settings: { contactSyncEnabled: value }
+                }, { merge: true });
             } catch (error) {
                 console.error("Failed to update setting", error);
-                // Revert? For now, we assume success or user retries.
+                setter(!value); // Revert on failure
             }
         }
     };

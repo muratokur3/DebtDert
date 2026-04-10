@@ -73,7 +73,10 @@ export const useContactSync = () => {
 
         } catch (error) {
             console.error("Sync error:", error);
-            showAlert("Hata", "Rehber eşlenirken bir sorun oluştu.", "error");
+            const msg = error instanceof Error ? error.message : 'Bilinmeyen hata';
+            showAlert("Hata", msg.includes('desteklenmiyor')
+                ? msg
+                : `Rehber eşlenirken bir sorun oluştu: ${msg}`, "error");
         } finally {
             setIsSyncing(false);
         }

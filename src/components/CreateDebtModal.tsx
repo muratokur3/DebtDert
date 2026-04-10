@@ -471,16 +471,20 @@ export const CreateDebtModal: React.FC<CreateDebtModalProps> = ({
             if (isInstallment && installmentCount > 1) {
                 generatedInstallments = [];
                 const remainingToInstallment = numAmount - numDownPayment;
-                const perAmount = remainingToInstallment / installmentCount;
+                // Kuruş yuvarlama düzeltmesi: son taksitte farkı topla
+                const base = Math.floor((remainingToInstallment / installmentCount) * 100) / 100;
+                const totalBase = Math.round(base * installmentCount * 100) / 100;
+                const remainder = Math.round((remainingToInstallment - totalBase) * 100) / 100;
                 const startDate = dueDate ? new Date(dueDate) : new Date();
 
                 for (let i = 0; i < installmentCount; i++) {
                     const date = new Date(startDate);
                     date.setMonth(date.getMonth() + i);
+                    const isLast = i === installmentCount - 1;
                     generatedInstallments.push({
                         id: crypto.randomUUID(),
                         dueDate: Timestamp.fromDate(date),
-                        amount: perAmount,
+                        amount: isLast ? base + remainder : base,
                         isPaid: false
                     });
                 }

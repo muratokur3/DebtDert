@@ -658,10 +658,15 @@ export const makePayment = async (
             console.log("DEBUG: Processing Installment Payment", { installmentId, efAmount });
             if (installmentId) {
                 // Scenario 1: Paying a specific installment
+                // Taksiti ödendi olarak işaretle ve gerçek ödenen tutarı kaydet
                 updatedInstallments = updatedInstallments.map(inst => {
                     if (String(inst.id).trim() === String(installmentId).trim()) {
-                        console.log("DEBUG: Marking installment as PAID", inst.id);
-                        return { ...inst, isPaid: true, paidAt: Timestamp.now() };
+                        return {
+                            ...inst,
+                            isPaid: true,
+                            paidAt: Timestamp.now(),
+                            paidAmount: efAmount // Gerçek ödenen tutar (taksit tutarından farklı olabilir)
+                        };
                     }
                     return inst;
                 });

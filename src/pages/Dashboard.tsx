@@ -565,7 +565,7 @@ export const Dashboard = () => {
             <div className="bg-white dark:bg-slate-800 px-4 pt-4 pb-2 flex justify-between items-center shadow-sm z-50 sticky top-0">
                 <div className="flex items-center gap-2">
                     {/* Brand Logo / Text */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-0.5">
                         <img src="/logo.svg" alt="Odeyn" className="w-8 h-8 rounded-lg shadow-sm" />
                         <span className="text-xl font-bold text-teal-600 dark:text-teal-400 tracking-tight leading-none">
                             deyn
